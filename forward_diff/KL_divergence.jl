@@ -2,6 +2,50 @@ using Base.Test
 using ForwardDiff
 
 
+######################################################
+# Univariate normal
+
+
+function normal_kl{NumType <: Number, NumType2 <: Number}(mu1::NumType2, sigma1Sq::NumType2, mu2::NumType, sigma2Sq::NumType, calculate_derivs::Bool)
+    log_sigma2Sq = log(sigma2Sq)
+    precision2 = 1 / sigma2Sq
+    diff = mu1 - mu2
+    kl = .5 * ((log_sigma2Sq - log(sigma1Sq)) + (sigma1Sq + (diff)^2) / sigma2Sq - 1)
+
+    if calculate_derivs
+        grad = zeros(NumType2, 2)
+        hess = zeros(NumType2, 2, 2)
+        grad[1] = precision2 * diff     # The mean
+        grad[2] = 0.5 * (precision2 - 1 / sigma1Sq)      # The variance
+        hess[1, 1] = precision2
+        hess[2, 2] = 0.5 / (sigma1Sq ^ 2)
+        return kl, grad, hess
+    else
+        return kl
+    end
+end
+
+mean1 = 0.5
+var1 = 2.0
+
+mean2 = 0.8
+var2 = 1.8
+
+kl, grad, hess = normal_kl(mean1, var1, mean2, var2, true)
+
+function normal_kl_wrapper{NumType <: Number}(par::Vector{NumType})
+    normal_kl(par[1], par[2], mean2, var2, false)
+end
+
+par = vcat(mean1, var1)
+ad_grad = ForwardDiff.gradient(normal_kl_wrapper, par)
+ad_hess = ForwardDiff.hessian(normal_kl_wrapper, par)
+
+@test_approx_eq normal_kl_wrapper(par) kl
+@test_approx_eq ad_grad grad
+@test_approx_eq ad_hess hess
+
+
 #######################################
 # Multivariate normal
 
