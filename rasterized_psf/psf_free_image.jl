@@ -114,8 +114,10 @@ PyPlot.close("all")
 convolved_sf = SensitiveFloats.zero_sensitive_float(CanonicalParams, Float64, length(ea.active_sources));
 
 
+
+
+# Naive convolution
 conv_time = time()
-# E_G first naively
 convolved_sf.v[1] = sum(conv2(psf_image, [ pix.v[1] for pix in E_G_pixels ]));
 
 for sa_d in 1:size(convolved_sf.d, 2), ind in 1:size(convolved_sf.d, 1)
@@ -128,3 +130,63 @@ for ind1 in 1:size(convolved_sf.h, 1), ind2 in 1:ind1
     sum(conv2(psf_image, [ pix.h[ind1, ind2] for pix in E_G_pixels ]));
 end
 conv_time = time() - conv_time
+
+
+
+
+# Caching convolution
+convolved_sf = SensitiveFloats.zero_sensitive_float(
+  CanonicalParams, Float64, length(ea.active_sources));
+
+psf_size = size(psf_image)
+tile_size = size(E_G_pixels)
+psf_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
+tile_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
+psf_mat_for_fft[1:psf_size[1], 1:psf_size[2]] = psf_image
+psf_fft_plan = plan_fft(psf_mat_for_fft);
+psf_fft = psf_fft_plan * psf_mat_for_fft;
+
+conv_time = time()
+
+for h in 1:tile_size[1], w in 1:tile_size[2]
+  tile_mat_for_fft[h, w] = E_G_pixels[h, w].v[1]
+end
+
+convolved_sf.v[1] = sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
+
+for sa_d in 1:size(convolved_sf.d, 2), ind in 1:size(convolved_sf.d, 1)
+  for h in 1:tile_size[1], w in 1:tile_size[2]
+    tile_mat_for_fft[h, w] = E_G_pixels[h, w].d[ind, sa_d]
+  end
+  convolved_sf.d[ind, sa_d] =
+    sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
+end
+
+for ind1 in 1:size(convolved_sf.h, 1), ind2 in 1:ind1
+  for h in 1:tile_size[1], w in 1:tile_size[2]
+    tile_mat_for_fft[h, w] = E_G_pixels[h, w].h[ind2, ind1]
+  end
+    sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
+
+  convolved_sf.h[ind1, ind2] = convolved_sf.h[ind2, ind1] =
+    sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
+end
+conv_time = time() - conv_time
+
+
+
+
+# Here's the code for conv2
+
+
+sa, sb = size(A), size(B)
+At = zeros(T, sa[1]+sb[1]-1, sa[2]+sb[2]-1)
+Bt = zeros(T, sa[1]+sb[1]-1, sa[2]+sb[2]-1)
+At[1:sa[1], 1:sa[2]] = A
+Bt[1:sb[1], 1:sb[2]] = B
+p = plan_fft(At)
+C = ifft((p*At).*(p*Bt))
+if T <: Real
+    return real(C)
+end
+return C
