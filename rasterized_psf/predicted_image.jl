@@ -4,6 +4,9 @@ using DeterministicVI.load_source_brightnesses
 using DeterministicVI.ElboIntermediateVariables
 using DeterministicVI.get_expected_pixel_brightness!
 
+using Celeste.Model.ParamSet
+using SensitiveFloats.SensitiveFloat
+
 
 """
 Produce a predicted image for a given tile and model parameters.
@@ -50,4 +53,52 @@ function get_expected_tile_brightness{NumType <: Number}(
     end
 
     E_G_pixels, var_G_pixels
+end
+
+
+"""
+Convolve and sum a matrix of sensitive floats with a matrix using FFT.
+
+Args:
+  - result_sf: Updated in place with the sum of the convolution
+  - sf_matrix: A matrix of sensitive floats arranged spatially
+  - float_matrix: Pre-allocated memory the same size as sf_matrix
+  - conv_fft: The FFT of the signal you want to convolve, same size as sf_matrix
+  - fft_plan: The plan for the FFT based on the size of sf_matrix.
+"""
+function convolve_and_add_sensitive_float!{ParamType <: ParamSet}(
+    result_sf::SensitiveFloat{ParamType, Float64},
+    sf_matrix::Matrix{SensitiveFloat{ParamType, Float64}},
+    float_matrix::Matrix{Float64},
+    conv_fft::Matrix{Complex{Float64}},
+    fft_plan::Base.DFT.FFTW.cFFTWPlan{Complex{Float64},-1,false,2})
+
+    for ind in 1:length(float_matrix)
+      float_matrix[ind] = 0
+    end
+
+    h_range = 1:size(sf_matrix, 1)
+    w_range = 1:size(sf_matrix, 2)
+
+    for h in h_range, w in w_range
+      float_matrix[h, w] = sf_matrix[h, w].v[1]
+    end
+    result_sf.v[1] += sum(real(ifft(conv_fft .* (fft_plan * float_matrix))));
+
+    for sa_d in 1:size(convolved_sf.d, 2), ind in 1:size(convolved_sf.d, 1)
+      for h in h_range, w in w_range
+        float_matrix[h, w] = sf_matrix[h, w].d[ind, sa_d]
+      end
+      result_sf.d[ind, sa_d] +=
+        sum(real(ifft(conv_fft .* (fft_plan * float_matrix))));
+    end
+
+    for ind1 in 1:size(convolved_sf.h, 1), ind2 in 1:ind1
+      for h in h_range, w in w_range
+        float_matrix[h, w] = sf_matrix[h, w].h[ind2, ind1]
+      end
+
+      result_sf.h[ind1, ind2] += result_sf.h[ind2, ind1] =
+        sum(real(ifft(conv_fft .* (fft_plan * float_matrix))));
+    end
 end

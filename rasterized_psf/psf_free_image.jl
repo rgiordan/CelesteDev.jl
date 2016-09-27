@@ -175,18 +175,21 @@ conv_time = time() - conv_time
 
 
 
+psf_size = size(psf_image)
+tile_size = size(E_G_pixels)
+psf_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
+tile_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
+psf_mat_for_fft[1:psf_size[1], 1:psf_size[2]] = psf_image
+psf_fft_plan = plan_fft(psf_mat_for_fft);
+psf_fft = psf_fft_plan * psf_mat_for_fft;
 
-# Here's the code for conv2
-
-
-sa, sb = size(A), size(B)
-At = zeros(T, sa[1]+sb[1]-1, sa[2]+sb[2]-1)
-Bt = zeros(T, sa[1]+sb[1]-1, sa[2]+sb[2]-1)
-At[1:sa[1], 1:sa[2]] = A
-Bt[1:sb[1], 1:sb[2]] = B
-p = plan_fft(At)
-C = ifft((p*At).*(p*Bt))
-if T <: Real
-    return real(C)
-end
-return C
+conv_time = time()
+result_sf = SensitiveFloats.zero_sensitive_float(
+  CanonicalParams, Float64, length(ea.active_sources));
+convolve_and_add_sensitive_float!(
+    result_sf,
+    E_G_pixels,
+    tile_mat_for_fft,
+    psf_fft,
+    psf_fft_plan)
+conv_time = time() - conv_time
