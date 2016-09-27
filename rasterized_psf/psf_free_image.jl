@@ -21,6 +21,8 @@ using PyPlot
 const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
 wd = pwd()
 
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+
 run, camcol, field = (3900, 6, 269)
 
 images = SDSSIO.load_field_images(RunCamcolField(run, camcol, field), datadir);
@@ -82,114 +84,90 @@ psf_spread = 5.0
 psf_comp = Model.PsfComponent(1.0, Float64[0, 0],
     Float64[ psf_spread 0.0; 0.0 psf_spread ]);
 psf_image = PSF.get_psf_at_point(PsfComponent[psf_comp])
-psf_nonzero = ind2sub(size(psf_image), find(abs(psf_image) .> 1e-16))
-psf_h_range = minimum(psf_nonzero[1]):maximum(psf_nonzero[1])
-psf_w_range = minimum(psf_nonzero[2]):maximum(psf_nonzero[2])
-psf_image = psf_image[psf_h_range, psf_w_range]
+# psf_nonzero = ind2sub(size(psf_image), find(abs(psf_image) .> 1e-16))
+# psf_h_range = minimum(psf_nonzero[1]):maximum(psf_nonzero[1])
+# psf_w_range = minimum(psf_nonzero[2]):maximum(psf_nonzero[2])
+# psf_image = psf_image[psf_h_range, psf_w_range]
 
 psf_image[abs(psf_image) .< 1e-8] = 0
-psf_image_sparse = sparse(psf_image);
-matshow(psf_image_sparse)
 
 image_convolved_psf = conv2(psf_image, image);
-matshow(image_convolved_psf); title("convolved"); colorbar()
-PyPlot.close("all")
+# matshow(image_convolved_psf); title("convolved"); colorbar()
+# PyPlot.close("all")
 
+
+
+# Convolution of sensitive floats
+
+NumType = Float64
+tile = source_tiles[4];
 elbo_vars =
     DeterministicVI.ElboIntermediateVariables(Float64, ea.S, length(ea.active_sources));
+tile_sources = Int[sa]
+
+star_mcs, gal_mcs = DeterministicVI.load_bvn_mixtures(ea, tile.b, calculate_derivs=true);
+
+# Sanity check:
+star_mcs[1, sa].the_mean
+obj_loc_pix = WCS.world_to_pix(ea.images[b].wcs, ea.vp[sa][ids.u])
+Model.linear_world_to_pix(ea.patches[sa, b].wcs_jacobian,
+                          ea.patches[sa, b].center,
+                          ea.patches[sa, b].pixel_center, ea.vp[sa][ids.u])
 
 
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
-tile = source_tiles[4];
-E_G_pixels, var_G_pixels =
-  get_expected_tile_brightness(tile, ea, Int64[sa], true, true, include_epsilon=false);
+fs0m_tile, fs1m_tile =
+    get_source_tile_fsm_matrix(tile, ea, sa, elbo_vars, star_mcs, gal_mcs,
+                               tile_sources, true, true);
+(fft_size1, fft_size2) =
+    (size(fs0m_tile, 1) + size(psf_image, 1) - 1,
+     size(fs0m_tile, 2) + size(psf_image, 2) - 1)
+psf_fft = zeros(Complex{Float64}, fft_size1, fft_size2);
+psf_fft[1:size(psf_image, 1), 1:size(psf_image, 2)] = psf_image;
+fft!(psf_fft);
 
-E_G_v = [ pix.v[1] for pix in E_G_pixels ];
+ParamType = StarPosParams
+fs0m_tile_padded = [ SensitiveFloats.zero_sensitive_float(ParamType, Float64, size(fs0m_tile[1].d, 2))
+                     for h in 1:fft_size1, w in 1:fft_size2  ];
+for h in 1:size(fs0m_tile, 1), w in 1:size(fs0m_tile, 2)
+    fs0m_tile_padded[h, w] = deepcopy(fs0m_tile[h, w])
+end
 
-matshow(E_G_v); colorbar(); title("E_G_v")
-matshow(Float64[ pix.d[ids.e_scale] for pix in E_G_pixels ]); colorbar(); title("deriv")
-matshow(Float64[ pix.v[1] for pix in var_G_pixels ]); colorbar(); title("var")
+fs0m_conv = convolve_sensitive_float_matrix(fs0m_tile_padded, psf_fft);
 PyPlot.close("all")
+# A point gets mapped to its location in foo + location in bar - 1.  Since the psf
+# image is centered at (26, 26), spatial locations are increased by 25.
+obj_loc_tile_pix =
+    obj_loc_pix -
+    [ tile.h_range.start - 1, tile.w_range.start - 1]
 
-convolved_sf = SensitiveFloats.zero_sensitive_float(CanonicalParams, Float64, length(ea.active_sources));
-
-
-
-
-# Naive convolution
-conv_time = time()
-convolved_sf.v[1] = sum(conv2(psf_image, [ pix.v[1] for pix in E_G_pixels ]));
-
-for sa_d in 1:size(convolved_sf.d, 2), ind in 1:size(convolved_sf.d, 1)
-  convolved_sf.d[ind, sa_d] =
-    sum(conv2(psf_image, [ pix.d[ind, sa_d] for pix in E_G_pixels ]));
-end
-
-for ind1 in 1:size(convolved_sf.h, 1), ind2 in 1:ind1
-  convolved_sf.h[ind1, ind2] = convolved_sf.h[ind2, ind1] =
-    sum(conv2(psf_image, [ pix.h[ind1, ind2] for pix in E_G_pixels ]));
-end
-conv_time = time() - conv_time
+matshow([sf.v[1] for sf in fs0m_conv]); title("conv");
+plot(obj_loc_tile_pix[2] - 1 + 25, obj_loc_tile_pix[1] - 1 + 25, "ro");
+colorbar()
+matshow([sf.v[1] for sf in fs0m_tile]); title("tile"); colorbar()
+plot(obj_loc_tile_pix[2] - 1, obj_loc_tile_pix[1] - 1, "ro");
+#matshow(conv2(Float64[ sf.v[1] for sf in fs0m_tile ], psf_image)); colorbar(); title("conv2")
 
 
 
-
-# Caching convolution
-convolved_sf = SensitiveFloats.zero_sensitive_float(
-  CanonicalParams, Float64, length(ea.active_sources));
-
-psf_size = size(psf_image)
-tile_size = size(E_G_pixels)
-psf_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
-tile_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
-psf_mat_for_fft[1:psf_size[1], 1:psf_size[2]] = psf_image
-psf_fft_plan = plan_fft(psf_mat_for_fft);
-psf_fft = psf_fft_plan * psf_mat_for_fft;
-
-conv_time = time()
-
-for h in 1:tile_size[1], w in 1:tile_size[2]
-  tile_mat_for_fft[h, w] = E_G_pixels[h, w].v[1]
-end
-
-convolved_sf.v[1] = sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
-
-for sa_d in 1:size(convolved_sf.d, 2), ind in 1:size(convolved_sf.d, 1)
-  for h in 1:tile_size[1], w in 1:tile_size[2]
-    tile_mat_for_fft[h, w] = E_G_pixels[h, w].d[ind, sa_d]
-  end
-  convolved_sf.d[ind, sa_d] =
-    sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
-end
-
-for ind1 in 1:size(convolved_sf.h, 1), ind2 in 1:ind1
-  for h in 1:tile_size[1], w in 1:tile_size[2]
-    tile_mat_for_fft[h, w] = E_G_pixels[h, w].h[ind2, ind1]
-  end
-    sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
-
-  convolved_sf.h[ind1, ind2] = convolved_sf.h[ind2, ind1] =
-    sum(real(ifft(psf_fft .* (psf_fft_plan * tile_mat_for_fft))));
-end
-conv_time = time() - conv_time
+# Check how the spatial mapping works
+foo = zeros(30, 30)
+bar = zeros(30, 30)
+foo[5, 16] = 1
+bar[4, 10] = 1
+baz = conv2(foo, bar)
+ind2sub(size(baz), find(baz .== maximum(baz)))
 
 
 
-psf_size = size(psf_image)
-tile_size = size(E_G_pixels)
-psf_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
-tile_mat_for_fft = zeros(psf_size[1] + tile_size[1] - 1, psf_size[2] + tile_size[2] - 1);
-psf_mat_for_fft[1:psf_size[1], 1:psf_size[2]] = psf_image
-psf_fft_plan = plan_fft(psf_mat_for_fft);
-psf_fft = psf_fft_plan * psf_mat_for_fft;
 
-conv_time = time()
-result_sf = SensitiveFloats.zero_sensitive_float(
-  CanonicalParams, Float64, length(ea.active_sources));
-convolve_and_add_sensitive_float!(
-    result_sf,
-    E_G_pixels,
-    tile_mat_for_fft,
-    psf_fft,
-    psf_fft_plan)
-conv_time = time() - conv_time
+
+
+
+
+
+
+
+
+
+
+############
