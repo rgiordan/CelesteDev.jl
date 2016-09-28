@@ -10,6 +10,8 @@ using DeterministicVI.BvnComponent
 using DeterministicVI.GalaxyCacheComponent
 
 using SensitiveFloats.zero_sensitive_float
+using SensitiveFloats.zero_sensitive_float_array
+
 
 """
 Do it

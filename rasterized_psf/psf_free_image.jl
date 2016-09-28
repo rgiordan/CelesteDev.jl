@@ -17,6 +17,8 @@ using Distributions
 
 using PyPlot
 
+
+##########
 # Ensure that test images are available.
 const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
 wd = pwd()
@@ -40,7 +42,8 @@ neighbors = Infer.find_neighbors([sa], catalog, tiled_images)[1];
 cat_local = vcat(catalog[sa], catalog[neighbors]);
 vp = Vector{Float64}[init_source(ce) for ce in cat_local];
 patches, tile_source_map = Infer.get_tile_source_map(tiled_images, cat_local);
-ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [sa], default_psf_K);
+ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [sa], default_psf_K, 3.0);
+
 
 point_psf_width = 0.5
 point_psf = Model.PsfComponent(1.0, Float64[0, 0],
@@ -126,13 +129,28 @@ psf_fft[1:size(psf_image, 1), 1:size(psf_image, 2)] = psf_image;
 fft!(psf_fft);
 
 ParamType = StarPosParams
-fs0m_tile_padded = [ SensitiveFloats.zero_sensitive_float(ParamType, Float64, size(fs0m_tile[1].d, 2))
-                     for h in 1:fft_size1, w in 1:fft_size2  ];
-for h in 1:size(fs0m_tile, 1), w in 1:size(fs0m_tile, 2)
-    fs0m_tile_padded[h, w] = deepcopy(fs0m_tile[h, w])
-end
 
-fs0m_conv = convolve_sensitive_float_matrix(fs0m_tile_padded, psf_fft);
+fs0m_tile_padded =
+    zero_sensitive_float_array(StarPosParams, Float64, length(ea.active_sources),
+    size(psf_fft)...);
+fs1m_tile_padded =
+    zero_sensitive_float_array(GalaxyPosParams, Float64, length(ea.active_sources),
+    size(psf_fft)...);
+
+fs0m_tile_padded[1:size(fs0m_tile, 1), 1:size(fs0m_tile, 2)] = fs0m_tile;
+fs1m_tile_padded[1:size(fs1m_tile, 1), 1:size(fs1m_tile, 2)] = fs1m_tile;
+
+conv_time = time()
+fs0m_conv_padded = convolve_sensitive_float_matrix(fs0m_tile_padded, psf_fft);
+fs1m_conv_padded = convolve_sensitive_float_matrix(fs1m_tile_padded, psf_fft);
+conv_time = time() - conv_time
+
+pad_pix_h = Integer((size(psf_image, 1) - 1) / 2)
+pad_pix_w = Integer((size(psf_image, 2) - 1) / 2)
+
+fs0m_conv = fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h), (pad_pix_w + 1):(end - pad_pix_w)];
+fs1m_conv = fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h), (pad_pix_w + 1):(end - pad_pix_w)];
+
 PyPlot.close("all")
 # A point gets mapped to its location in foo + location in bar - 1.  Since the psf
 # image is centered at (26, 26), spatial locations are increased by 25.
@@ -140,22 +158,17 @@ obj_loc_tile_pix =
     obj_loc_pix -
     [ tile.h_range.start - 1, tile.w_range.start - 1]
 
-matshow([sf.v[1] for sf in fs0m_conv]); title("conv");
-plot(obj_loc_tile_pix[2] - 1 + 25, obj_loc_tile_pix[1] - 1 + 25, "ro");
+matshow([sf.v[1] for sf in fs0m_conv]); title("star conv");
+plot(obj_loc_tile_pix[2] - 1, obj_loc_tile_pix[1] - 1, "ro");
 colorbar()
-matshow([sf.v[1] for sf in fs0m_tile]); title("tile"); colorbar()
+
+matshow([sf.v[1] for sf in fs0m_tile]); title("star tile"); colorbar()
+plot(obj_loc_tile_pix[2] - 1, obj_loc_tile_pix[1] - 1, "ro");
+
+matshow([sf.v[1] for sf in fs1m_tile]); title("gal tile"); colorbar()
 plot(obj_loc_tile_pix[2] - 1, obj_loc_tile_pix[1] - 1, "ro");
 #matshow(conv2(Float64[ sf.v[1] for sf in fs0m_tile ], psf_image)); colorbar(); title("conv2")
 
-
-
-# Check how the spatial mapping works
-foo = zeros(30, 30)
-bar = zeros(30, 30)
-foo[5, 16] = 1
-bar[4, 10] = 1
-baz = conv2(foo, bar)
-ind2sub(size(baz), find(baz .== maximum(baz)))
 
 
 
