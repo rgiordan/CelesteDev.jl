@@ -13,6 +13,57 @@ using SensitiveFloats.zero_sensitive_float
 using SensitiveFloats.zero_sensitive_float_array
 
 
+function fsm_from_active_pixels!{NumType <: Number}(
+                elbo_vars::ElboIntermediateVariables{NumType},
+                b::Int,
+                ea::ElboArgs{NumType},
+                active_pixels::Array{ActivePixel})
+
+    # sbs = load_source_brightnesses(ea,
+    #     calculate_derivs=elbo_vars.calculate_derivs,
+    #     calculate_hessian=elbo_vars.calculate_hessian)
+
+    star_mcs_vec = Array(Array{BvnComponent{NumType}, 2}, ea.N)
+    gal_mcs_vec = Array(Array{GalaxyCacheComponent{NumType}, 4}, ea.N)
+
+    for b=1:ea.N
+        star_mcs_vec[b], gal_mcs_vec[b] =
+            load_bvn_mixtures(ea, b,
+                calculate_derivs=elbo_vars.calculate_derivs,
+                calculate_hessian=elbo_vars.calculate_hessian)
+    end
+
+    # iterate over the pixels
+    for pixel in active_pixels
+        tile = ea.images[pixel.n].tiles[pixel.tile_ind]
+        tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
+        this_pixel = tile.pixels[pixel.h, pixel.w]
+
+        # Get the brightness.
+        get_expected_pixel_brightness!(
+            elbo_vars, pixel.h, pixel.w, sbs,
+            star_mcs_vec[pixel.n], gal_mcs_vec[pixel.n], tile,
+            ea, tile_sources, include_epsilon=true)
+
+        # Add the terms to the elbo given the brightness.
+        iota = tile.iota_vec[pixel.h]
+        add_elbo_log_term!(elbo_vars, this_pixel, iota)
+        add_scaled_sfs!(elbo_vars.elbo,
+                        elbo_vars.E_G, -iota,
+                        elbo_vars.calculate_hessian &&
+                        elbo_vars.calculate_derivs)
+
+        # Subtract the log factorial term. This is not a function of the
+        # parameters so the derivatives don't need to be updated. Note that
+        # even though this does not affect the ELBO's maximum, it affects
+        # the optimization convergence criterion, so I will leave it in for now.
+        elbo_vars.elbo.v[1] -= lfact(this_pixel)
+    end
+end
+
+
+
+
 """
 Do it
 """
