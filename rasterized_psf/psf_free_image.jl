@@ -24,6 +24,7 @@ const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
 wd = pwd()
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+using PSFConvolution
 
 run, camcol, field = (3900, 6, 269)
 
@@ -35,7 +36,7 @@ catalog = SDSSIO.read_photoobj_celeste(fname);
 
 # Pick an object.
 objid = "1237662226208063499"
-objids = [ce.objid for ce in catalog]
+objids = [ce.objid for ce in catalog];
 sa = findfirst(objids, objid);
 neighbors = Infer.find_neighbors([sa], catalog, tiled_images)[1];
 
@@ -45,24 +46,26 @@ patches, tile_source_map = Infer.get_tile_source_map(tiled_images, cat_local);
 ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [sa]; psf_K=2, num_allowed_sd=3.0);
 active_pixels = DeterministicVI.get_active_pixels(ea);
 
+elbo_time = time()
+DeterministicVI.elbo(ea);
+elbo_time = time() - elbo_time
 
 
+##############
+
+psf_spread = 0.5
+psf_comp = Model.PsfComponent(1.0, Float64[0, 0],
+    Float64[ psf_spread 0.0; 0.0 psf_spread ]);
+psf_image = PSF.get_psf_at_point(PsfComponent[psf_comp])
 
 ######################################
 
 
-point_psf_width = 0.5
-point_psf = Model.PsfComponent(1.0, Float64[0, 0],
-    Float64[ point_psf_width 0.0; 0.0 point_psf_width ])
-for s in 1:size(ea.patches)[1], b in 1:size(ea.patches)[2]
-  ea.patches[s, b] = SkyPatch(ea.patches[s, b], Model.PsfComponent[ point_psf ]);
-end
-ea.psf_K = 1
 
 b = 3
+NumType = Float64
+s = ea.active_sources[1]
 
-
-############### Process active pixels
 
 elbo_vars = DeterministicVI.ElboIntermediateVariables(Float64, ea.S, length(ea.active_sources));
 
@@ -78,48 +81,21 @@ for pixel in active_pixels
     w_upper[pixel.n] = max(w_upper[pixel.n], tile.w_range.stop)
 end
 
-NumType = Float64
-star_mcs_vec = Array(Array{BvnComponent{NumType}, 2}, ea.N);
-gal_mcs_vec = Array(Array{GalaxyCacheComponent{NumType}, 4}, ea.N);
-
-for b=1:ea.N
-    star_mcs_vec[b], gal_mcs_vec[b] =
-        load_bvn_mixtures(ea, b,
-            calculate_derivs=elbo_vars.calculate_derivs,
-            calculate_hessian=elbo_vars.calculate_hessian)
-end
-
-b = 3
-s = ea.active_sources[1]
-
 h_width = h_upper[b] - h_lower[b] + 1
 w_width = w_upper[b] - w_lower[b] + 1
 
-# These are all pointers to the same SF, which is zero.  Make sure to set
-# with deepcopy.
-zero_sf0 = zero_sensitive_float(StarPosParams, Float64, length(ea.active_sources))
-fs0m_image = fill(zero_sf0, h_width, w_width);
+using SensitiveFloats.zero_sensitive_float_array
 
-zero_sf1 = zero_sensitive_float(GalaxyPosParams, Float64, length(ea.active_sources))
-fs1m_image = fill(zero_sf1, h_width, w_width);
+# Pre-allocate arrays.
+fs0m_image = zero_sensitive_float_array(
+    StarPosParams, Float64, length(ea.active_sources), h_width, w_width);
+fs1m_image = zero_sensitive_float_array(
+    GalaxyPosParams, Float64, length(ea.active_sources), h_width, w_width);
 
-gal_mcs = gal_mcs_vec[b];
-star_mcs = star_mcs_vec[b];
-
-for pixel in active_pixels
-    if pixel.n == b
-        tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-        tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
-        populate_fsm_vecs!(elbo_vars, ea, tile_sources, tile, pixel.h, pixel.w, gal_mcs, star_mcs)
-        h = tile.h_range[pixel.h] - h_lower[b] + 1
-        w = tile.w_range[pixel.w] - w_lower[b] + 1
-        fs0m_image[h, w] = deepcopy(elbo_vars.fs0m_vec[s])
-        fs1m_image[h, w] = deepcopy(elbo_vars.fs1m_vec[s])
-    end
-end
-
-
-########################
+fs0m_conv = zero_sensitive_float_array(
+    StarPosParams, Float64, length(ea.active_sources), h_width, w_width);
+fs1m_conv = zero_sensitive_float_array(
+    GalaxyPosParams, Float64, length(ea.active_sources), h_width, w_width);
 
 (fft_size1, fft_size2) =
     (size(fs0m_image, 1) + size(psf_image, 1) - 1,
@@ -135,110 +111,79 @@ fs1m_image_padded =
     zero_sensitive_float_array(GalaxyPosParams, Float64, length(ea.active_sources),
     size(psf_fft)...);
 
-fs0m_image_padded[1:size(fs0m_image, 1), 1:size(fs0m_image, 2)] = fs0m_image;
-fs1m_image_padded[1:size(fs1m_image, 1), 1:size(fs1m_image, 2)] = fs1m_image;
-
-conv_time = time()
-fs0m_conv_padded = convolve_sensitive_float_matrix(fs0m_image_padded, psf_fft);
-fs1m_conv_padded = convolve_sensitive_float_matrix(fs1m_image_padded, psf_fft);
-conv_time = time() - conv_time
-
-pad_pix_h = Integer((size(psf_image, 1) - 1) / 2)
-pad_pix_w = Integer((size(psf_image, 2) - 1) / 2)
-
-fs0m_conv = fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h), (pad_pix_w + 1):(end - pad_pix_w)];
-fs1m_conv = fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h), (pad_pix_w + 1):(end - pad_pix_w)];
+fs0m_conv_padded =
+    zero_sensitive_float_array(StarPosParams, Float64, length(ea.active_sources),
+    size(psf_fft)...);
+fs1m_conv_padded =
+    zero_sensitive_float_array(GalaxyPosParams, Float64, length(ea.active_sources),
+    size(psf_fft)...);
 
 
-#################################
 
-using DeterministicVI.accumulate_source_brightness!
-using DeterministicVI.add_sources_sf!
-using DeterministicVI.add_elbo_log_term!
-using DeterministicVI.add_scaled_sfs!
+############### Process active pixels
+using DeterministicVI.BvnComponent
+using DeterministicVI.GalaxyCacheComponent
+using DeterministicVI.load_bvn_mixtures
+using DeterministicVI.load_source_brightnesses
+using DeterministicVI.populate_fsm_vecs!
 
-include_epsilon = false
+
+elbo_time = time()
+
+star_mcs_vec = Array(Array{BvnComponent{NumType}, 2}, ea.N);
+gal_mcs_vec = Array(Array{GalaxyCacheComponent{NumType}, 4}, ea.N);
+
+foo = time() - elbo_time
+for b=1:ea.N
+    star_mcs_vec[b], gal_mcs_vec[b] =
+        load_bvn_mixtures(ea, b,
+            calculate_derivs=elbo_vars.calculate_derivs,
+            calculate_hessian=elbo_vars.calculate_hessian)
+end
 
 sbs = load_source_brightnesses(ea,
     calculate_derivs=elbo_vars.calculate_derivs,
     calculate_hessian=elbo_vars.calculate_hessian);
 
-# iterate over the pixels
+b = 3
+# Just compute one band N times for now
+for foo=1:ea.N
+    # TODO: In general, the image ranges could be different for each band.
+    gal_mcs = gal_mcs_vec[b];
+    star_mcs = star_mcs_vec[b];
 
-pixel = active_pixels[find([ pix.n ==b for pix in active_pixels ])[1]]
-for pixel in active_pixels
-    if pixel.n == b
-        tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-        tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
-        this_pixel = tile.pixels[pixel.h, pixel.w]
+    for pixel in active_pixels
+        if pixel.n == b
+            tile = ea.images[pixel.n].tiles[pixel.tile_ind]
+            tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
+            populate_fsm_vecs!(elbo_vars, ea, tile_sources, tile, pixel.h, pixel.w,
+                               gal_mcs, star_mcs)
+            h = tile.h_range[pixel.h] - h_lower[b] + 1
+            w = tile.w_range[pixel.w] - w_lower[b] + 1
 
-        # Get the brightness.
-
-        # get_expected_pixel_brightness!(
-        #     elbo_vars, pixel.h, pixel.w, sbs,
-        #     star_mcs_vec[pixel.n], gal_mcs_vec[pixel.n], tile,
-        #     ea, tile_sources, include_epsilon=true)
-
-        # This combines the sources into a single brightness value for the pixel.
-        # combine_pixel_sources!(elbo_vars, ea, tile_sources, tile, sbs)
-
-        clear!(elbo_vars.E_G,
-            elbo_vars.calculate_hessian && elbo_vars.calculate_derivs)
-        clear!(elbo_vars.var_G,
-            elbo_vars.calculate_hessian && elbo_vars.calculate_derivs)
-
-        # For now s is fixed, and only doing one band.
-        # for s in tile_sources
-        active_source = s in ea.active_sources
-        calculate_hessian =
-            elbo_vars.calculate_hessian && elbo_vars.calculate_derivs &&
-            active_source
-
-        # The key is this: ea.fs?m_vec[s] must contain the appropriate fsm
-        # sensitive floats.
-
-        # These are indices within the fs?m image.
-        h = tile.h_range[pixel.h] - h_lower[b] + 1
-        w = tile.w_range[pixel.w] - w_lower[b] + 1
-
-        elbo_vars.fs0m_vec[s] = fs0m_image[h, w];
-        elbo_vars.fs1m_vec[s] = fs1m_image[h, w];
-        accumulate_source_brightness!(elbo_vars, ea, sbs, s, tile.b);
-
-        if active_source
-            sa = findfirst(ea.active_sources, s)
-            add_sources_sf!(elbo_vars.E_G, elbo_vars.E_G_s, sa, calculate_hessian)
-            add_sources_sf!(elbo_vars.var_G, elbo_vars.var_G_s, sa, calculate_hessian)
-        else
-            # If the sources is inactives, simply accumulate the values.
-            elbo_vars.E_G.v[1] += elbo_vars.E_G_s.v[1]
-            elbo_vars.var_G.v[1] += elbo_vars.var_G_s.v[1]
+            # TODO: probably this deepcopy is what is so slow.
+            fs0m_image[h, w] = deepcopy(elbo_vars.fs0m_vec[s])
+            fs1m_image[h, w] = deepcopy(elbo_vars.fs1m_vec[s])
         end
     end
 
 
-    if include_epsilon
-        # There are no derivatives with respect to epsilon, so can safely add
-        # to the value.
-        elbo_vars.E_G.v[1] += tile.epsilon_mat[h, w]
-    end
+    ########################
+    PSFConvolution.convolve_fsm_images!(
+        fs0m_image, fs1m_image,
+        fs0m_image_padded, fs1m_image_padded,
+        fs0m_conv, fs1m_conv,
+        fs0m_conv_padded, fs1m_conv_padded,
+        psf_fft);
 
-
-    # Add the terms to the elbo given the brightness.
-    iota = tile.iota_vec[pixel.h]
-    add_elbo_log_term!(elbo_vars, this_pixel, iota)
-    add_scaled_sfs!(elbo_vars.elbo,
-                    elbo_vars.E_G, -iota,
-                    elbo_vars.calculate_hessian &&
-                    elbo_vars.calculate_derivs)
-
-    # Subtract the log factorial term. This is not a function of the
-    # parameters so the derivatives don't need to be updated. Note that
-    # even though this does not affect the ELBO's maximum, it affects
-    # the optimization convergence criterion, so I will leave it in for now.
-    elbo_vars.elbo.v[1] -= lfact(this_pixel)
+    #################################
+    # iterate over the pixels
+    PSFConvolution.get_expected_brightness_from_image!(
+        ea, elbo_vars, active_pixels, b, s,
+        sbs, star_mcs, gal_mcs, fs0m_conv, fs1m_conv, h_lower, w_lower, false)
 end
 
+elbo_time = time() - elbo_time
 
 
 
@@ -277,20 +222,6 @@ matshow(image); title(point_psf_width); colorbar()
 image_sparse = sparse(image)
 
 
-psf_spread = 5.0
-psf_comp = Model.PsfComponent(1.0, Float64[0, 0],
-    Float64[ psf_spread 0.0; 0.0 psf_spread ]);
-psf_image = PSF.get_psf_at_point(PsfComponent[psf_comp])
-# psf_nonzero = ind2sub(size(psf_image), find(abs(psf_image) .> 1e-16))
-# psf_h_range = minimum(psf_nonzero[1]):maximum(psf_nonzero[1])
-# psf_w_range = minimum(psf_nonzero[2]):maximum(psf_nonzero[2])
-# psf_image = psf_image[psf_h_range, psf_w_range]
-
-psf_image[abs(psf_image) .< 1e-8] = 0
-
-image_convolved_psf = conv2(psf_image, image);
-# matshow(image_convolved_psf); title("convolved"); colorbar()
-# PyPlot.close("all")
 
 
 
