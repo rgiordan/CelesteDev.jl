@@ -30,7 +30,7 @@ run, camcol, field = (3900, 6, 269)
 
 images = SDSSIO.load_field_images(RunCamcolField(run, camcol, field), datadir);
 tiled_images = TiledImage[TiledImage(img) for img in images];
-dir = joinpath(datadir, "$run/$camcol/$field");
+dir = joinpath(datadir, "$run/$camcol/$field")
 fname = @sprintf "%s/photoObj-%06d-%d-%04d.fits" dir run camcol field
 catalog = SDSSIO.read_photoobj_celeste(fname);
 
@@ -43,11 +43,12 @@ neighbors = Infer.find_neighbors([sa], catalog, tiled_images)[1];
 cat_local = vcat(catalog[sa], catalog[neighbors]);
 vp = Vector{Float64}[init_source(ce) for ce in cat_local];
 patches, tile_source_map = Infer.get_tile_source_map(tiled_images, cat_local);
-ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [sa]; psf_K=2, num_allowed_sd=3.0);
-active_pixels = DeterministicVI.get_active_pixels(ea);
+ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [sa]);
+Infer.fit_object_psfs!(ea, ea.active_sources);
+Infer.load_active_pixels!(ea);
 
 elbo_time = time()
-DeterministicVI.elbo(ea);
+elbo = DeterministicVI.elbo(ea);
 elbo_time = time() - elbo_time
 
 
@@ -61,19 +62,18 @@ psf_image = PSF.get_psf_at_point(PsfComponent[psf_comp])
 ######################################
 
 
-
 b = 3
 NumType = Float64
 s = ea.active_sources[1]
 
-
-elbo_vars = DeterministicVI.ElboIntermediateVariables(Float64, ea.S, length(ea.active_sources));
+elbo_vars = DeterministicVI.ElboIntermediateVariables(
+    Float64, ea.S, length(ea.active_sources));
 
 h_lower = Int[typemax(Int) for b in ea.images ]
 w_lower = Int[typemax(Int) for b in ea.images ]
 h_upper = Int[0 for b in ea.images ]
 w_upper = Int[0 for b in ea.images ]
-for pixel in active_pixels
+for pixel in ea.active_pixels
     tile = ea.images[pixel.n].tiles[pixel.tile_ind]
     h_lower[pixel.n] = min(h_lower[pixel.n], tile.h_range.start)
     h_upper[pixel.n] = max(h_upper[pixel.n], tile.h_range.stop)
@@ -152,7 +152,7 @@ for foo=1:ea.N
     gal_mcs = gal_mcs_vec[b];
     star_mcs = star_mcs_vec[b];
 
-    for pixel in active_pixels
+    for pixel in ea.active_pixels
         if pixel.n == b
             tile = ea.images[pixel.n].tiles[pixel.tile_ind]
             tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
@@ -179,7 +179,7 @@ for foo=1:ea.N
     #################################
     # iterate over the pixels
     PSFConvolution.get_expected_brightness_from_image!(
-        ea, elbo_vars, active_pixels, b, s,
+        ea, elbo_vars, ea.active_pixels, b, s,
         sbs, star_mcs, gal_mcs, fs0m_conv, fs1m_conv, h_lower, w_lower, false)
 end
 
@@ -213,13 +213,22 @@ min_w = minimum([tile.w_range.start for tile in source_tiles])
 max_w = maximum([tile.w_range.stop for tile in source_tiles])
 image = Float64[NaN for h=1:(max_h - min_h + 1), w=1:(max_w - min_w + 1)];
 
+# Show the active pixels
+for pixel in ea.active_pixels
+    if pixel.n == b
+        tile = ea.images[b].tiles[pixel.tile_ind]
+        image[tile.h_range.start - min_h + pixel.h,
+              tile.w_range.start - min_w + pixel.w] = 1
+    end
+end
+
+
 for tile in source_tiles
   pix = DeterministicVI.tile_predicted_image(tile, ea, Int64[sa], include_epsilon=false)
   image[tile.h_range - min_h + 1, tile.w_range - min_w + 1] = pix
 end
 image[abs(image) .< 1e-8 ] = 0;
-matshow(image); title(point_psf_width); colorbar()
-image_sparse = sparse(image)
+matshow(image); title(psf_spread); colorbar()
 
 
 
@@ -229,7 +238,8 @@ image_sparse = sparse(image)
 
 NumType = Float64
 tile = source_tiles[4];
-elbo_vars = DeterministicVI.ElboIntermediateVariables(Float64, ea.S, length(ea.active_sources));
+elbo_vars = DeterministicVI.ElboIntermediateVariables(
+    Float64, ea.S, length(ea.active_sources));
 tile_sources = Int[sa]
 
 star_mcs, gal_mcs = DeterministicVI.load_bvn_mixtures(ea, tile.b, calculate_derivs=true);
@@ -272,8 +282,10 @@ conv_time = time() - conv_time
 pad_pix_h = Integer((size(psf_image, 1) - 1) / 2)
 pad_pix_w = Integer((size(psf_image, 2) - 1) / 2)
 
-fs0m_conv = fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h), (pad_pix_w + 1):(end - pad_pix_w)];
-fs1m_conv = fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h), (pad_pix_w + 1):(end - pad_pix_w)];
+fs0m_conv = fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                             (pad_pix_w + 1):(end - pad_pix_w)];
+fs1m_conv = fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                             (pad_pix_w + 1):(end - pad_pix_w)];
 
 PyPlot.close("all")
 # A point gets mapped to its location in foo + location in bar - 1.  Since the psf
