@@ -1,16 +1,13 @@
-
-
-
-# Requires branch fsm_matrix of Celeste.jl
-# Run from the CelesteDev.jl directory
 """
 To reproduce segfault:
-Check out branch fsm_matrix of Celeste.jl (commit d7aa6)
-Run the below script in the CelesteDev.jl directory
+- Check out branch ```fsm_matrix_segfault``` of Celeste.jl (commit 21974)
+- Check out branch ```segfault``` from CelesteDev.jl
+- Run the Celeste tests with test/runtests misc (this will download the images)
+- Run this script from the CelesteDev.jl directory
 """
 
-
-
+################
+# Import modules
 using Celeste: Model, DeterministicVI
 
 import Celeste: Infer, DeterministicVI, ParallelRun
@@ -31,14 +28,13 @@ using Distributions
 using PyPlot
 
 
-##########
-# Ensure that test images are available.
 const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
 
 include("rasterized_psf/predicted_image.jl")
-
 using PSFConvolution
 
+##################
+# Load an image
 run, camcol, field = (3900, 6, 269)
 
 images = SDSSIO.load_field_images(RunCamcolField(run, camcol, field), datadir);
@@ -66,6 +62,7 @@ elbo_time = time() - elbo_time
 
 
 ##############
+# Fit the ELBO
 
 # This PSF effectively interpolates the pixelated PSF
 psf_spread = 0.5
@@ -75,6 +72,8 @@ psf_image = PSF.get_psf_at_point(PsfComponent[psf_comp])
 
 
 ######################################
+# Pre-allocate memory
+
 using SensitiveFloats.zero_sensitive_float_array
 using SensitiveFloats.SensitiveFloat
 using PSFConvolution.FSMSensitiveFloatMatrices
@@ -99,8 +98,7 @@ using DeterministicVI.load_source_brightnesses
 using DeterministicVI.populate_fsm!
 
 
-elbo_time = time()
-
+# Load brightnesses
 
 sbs = load_source_brightnesses(ea,
     calculate_derivs=elbo_vars.calculate_derivs,
@@ -117,123 +115,54 @@ for b=1:ea.N
             calculate_hessian=elbo_vars.calculate_hessian)
 end
 
+# Band one
 b = 1
-# for b=1:ea.N
 
-    gal_mcs = gal_mcs_vec[b];
-    star_mcs = star_mcs_vec[b];
+gal_mcs = gal_mcs_vec[b];
+star_mcs = star_mcs_vec[b];
 
-    pixel_ind = findfirst([ pixel.n == b for pixel in ea.active_pixels ])
-    pixel = ea.active_pixels[pixel_ind]
-    # for pixel in ea.active_pixels
-        # if pixel.n == b
-            # TODO: do this for all the sources.
-            tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-            tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
-            h = pixel.h
-            w = pixel.w
-            x = Float64[tile.h_range[h], tile.w_range[w]]
-            populate_fsm!(elbo_vars, ea,
-                          fsm_vec[b].fs0m_image[h, w],
-                          fsm_vec[b].fs1m_image[h, w],
-                          sa, b, x, true, gal_mcs, star_mcs)
-        # end
-    # end
+pixel_ind = findfirst([ pixel.n == b for pixel in ea.active_pixels ])
+pixel = ea.active_pixels[pixel_ind]
 
+tile = ea.images[pixel.n].tiles[pixel.tile_ind]
+tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
+h = pixel.h
+w = pixel.w
+x = Float64[tile.h_range[h], tile.w_range[w]]
+populate_fsm!(elbo_vars, ea,
+              fsm_vec[b].fs0m_image[h, w],
+              fsm_vec[b].fs1m_image[h, w],
+              sa, b, x, true, gal_mcs, star_mcs)
 
-    ########################
-    # Works:
-    using PSFConvolution.convolve_sensitive_float_matrix!
+########################
+# Manually copying the code from convolve_fsm_images! works:
 
-    fsms = fsm_vec[b];
+using PSFConvolution.convolve_sensitive_float_matrix!
 
-    for h in 1:size(fsms.fs0m_image, 1), w in 1:size(fsms.fs0m_image, 2)
-        fsms.fs0m_image_padded[h, w] = fsms.fs0m_image[h, w];
-        fsms.fs1m_image_padded[h, w] = fsms.fs1m_image[h, w];
-    end
+fsms = fsm_vec[b];
 
-    conv_time = time()
-    convolve_sensitive_float_matrix!(
-        fsms.fs0m_image_padded, fsms.psf_fft, fsms.fs0m_conv_padded);
-    convolve_sensitive_float_matrix!(
-        fsms.fs1m_image_padded, fsms.psf_fft, fsms.fs1m_conv_padded);
-    conv_time = time() - conv_time
-    println("Convolution time: ", conv_time)
-
-    pad_pix_h = Integer((size(fsms.fs0m_image_padded, 1) - size(fsms.fs0m_image, 1)) / 2)
-    pad_pix_w = Integer((size(fsms.fs0m_image_padded, 2) - size(fsms.fs0m_image, 2)) / 2)
-
-    fsms.fs0m_conv = fsms.fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
-                                           (pad_pix_w + 1):(end - pad_pix_w)];
-    fsms.fs1m_conv = fsms.fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
-                                           (pad_pix_w + 1):(end - pad_pix_w)];
-
-
-
-    # Segfaults:
-    PSFConvolution.convolve_fsm_images!(fsm_vec[b]);
-
-
-
-    #################################
-    # iterate over the pixels
-    PSFConvolution.get_expected_brightness_from_image!(
-        ea, elbo_vars, ea.active_pixels, b, s,
-        sbs, star_mcs, gal_mcs,
-        fsm_vec[b].fs0m_conv, fsm_vec[b].fs1m_conv,
-        h_lower, w_lower, false)
-
-# end
-
-elbo_time = time() - elbo_time
-
-
-
-
-
-
-
-######################################
-
-
-import Base.print
-function print(ce::CatalogEntry)
-  for field in fieldnames(ce)
-    println(field, ": ", getfield(ce, field))
-  end
+for h in 1:size(fsms.fs0m_image, 1), w in 1:size(fsms.fs0m_image, 2)
+    fsms.fs0m_image_padded[h, w] = fsms.fs0m_image[h, w];
+    fsms.fs1m_image_padded[h, w] = fsms.fs1m_image[h, w];
 end
 
+conv_time = time()
+convolve_sensitive_float_matrix!(
+    fsms.fs0m_image_padded, fsms.psf_fft, fsms.fs0m_conv_padded);
+convolve_sensitive_float_matrix!(
+    fsms.fs1m_image_padded, fsms.psf_fft, fsms.fs1m_conv_padded);
+conv_time = time() - conv_time
+println("Convolution time: ", conv_time)
 
-ea.vp[sa][ids.a] = [ 1, 0 ]
-ea.vp[sa][ids.u] = WCS.pix_to_world(ea.images[b].wcs,
-  floor(WCS.world_to_pix(ea.images[b].wcs, ea.vp[sa][ids.u])) + 0.5)
+pad_pix_h = Integer((size(fsms.fs0m_image_padded, 1) - size(fsms.fs0m_image, 1)) / 2)
+pad_pix_w = Integer((size(fsms.fs0m_image_padded, 2) - size(fsms.fs0m_image, 2)) / 2)
 
-source_tiles = ea.images[b].tiles[find([sa in tile for tile in tile_source_map[b] ])];
-min_h = minimum([tile.h_range.start for tile in source_tiles])
-max_h = maximum([tile.h_range.stop for tile in source_tiles])
-min_w = minimum([tile.w_range.start for tile in source_tiles])
-max_w = maximum([tile.w_range.stop for tile in source_tiles])
-image = Float64[NaN for h=1:(max_h - min_h + 1), w=1:(max_w - min_w + 1)];
-
-# Show the active pixels
-for pixel in ea.active_pixels
-    if pixel.n == b
-        tile = ea.images[b].tiles[pixel.tile_ind]
-        image[tile.h_range.start - min_h + pixel.h,
-              tile.w_range.start - min_w + pixel.w] = 1
-    end
-end
+fsms.fs0m_conv = fsms.fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                                       (pad_pix_w + 1):(end - pad_pix_w)];
+fsms.fs1m_conv = fsms.fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                                       (pad_pix_w + 1):(end - pad_pix_w)];
 
 
-for tile in source_tiles
-  pix = DeterministicVI.tile_predicted_image(tile, ea, Int64[sa], include_epsilon=false)
-  image[tile.h_range - min_h + 1, tile.w_range - min_w + 1] = pix
-end
-image[abs(image) .< 1e-8 ] = 0;
-matshow(image); title(psf_spread); colorbar()
-
-
-
-
-
-############
+########################
+# Calling the function segfaults:
+PSFConvolution.convolve_fsm_images!(fsm_vec[b]);
