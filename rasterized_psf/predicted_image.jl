@@ -13,6 +13,7 @@ using DeterministicVI.GalaxyCacheComponent
 
 using SensitiveFloats.zero_sensitive_float
 using SensitiveFloats.zero_sensitive_float_array
+using SensitiveFloats.SensitiveFloat
 using SensitiveFloats.clear!
 
 using DeterministicVI.accumulate_source_brightness!
@@ -26,89 +27,86 @@ using DeterministicVI.SourceBrightness
 using DeterministicVI.StarPosParams
 using DeterministicVI.GalaxyPosParams
 
-function fsm_from_active_pixels!{NumType <: Number}(
-                elbo_vars::ElboIntermediateVariables{NumType},
-                b::Int,
-                ea::ElboArgs{NumType},
-                active_pixels::Array{ActivePixel})
 
-    # sbs = load_source_brightnesses(ea,
-    #     calculate_derivs=elbo_vars.calculate_derivs,
-    #     calculate_hessian=elbo_vars.calculate_hessian)
+typealias fs0mMatrix Matrix{SensitiveFloat{StarPosParams, Float64}}
+typealias fs1mMatrix Matrix{SensitiveFloat{GalaxyPosParams, Float64}}
 
-    star_mcs_vec = Array(Array{BvnComponent{NumType}, 2}, ea.N)
-    gal_mcs_vec = Array(Array{GalaxyCacheComponent{NumType}, 4}, ea.N)
+type FSMSensitiveFloatMatrices
+    fs0m_image::fs0mMatrix;
+    fs1m_image::fs1mMatrix;
+    fs0m_image_padded::fs0mMatrix;
+    fs1m_image_padded::fs1mMatrix;
+    fs0m_conv::fs0mMatrix;
+    fs1m_conv::fs1mMatrix;
+    fs0m_conv_padded::fs0mMatrix;
+    fs1m_conv_padded::fs1mMatrix;
+    psf_fft::Matrix{Complex{Float64}};
 
-    for b=1:ea.N
-        star_mcs_vec[b], gal_mcs_vec[b] =
-            load_bvn_mixtures(ea, b,
-                calculate_derivs=elbo_vars.calculate_derivs,
-                calculate_hessian=elbo_vars.calculate_hessian)
-    end
-
-    # iterate over the pixels
-    for pixel in active_pixels
-        tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-        tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
-        this_pixel = tile.pixels[pixel.h, pixel.w]
-
-        # Get the brightness.
-        get_expected_pixel_brightness!(
-            elbo_vars, pixel.h, pixel.w, sbs,
-            star_mcs_vec[pixel.n], gal_mcs_vec[pixel.n], tile,
-            ea, tile_sources, include_epsilon=true)
-
-        # Add the terms to the elbo given the brightness.
-        iota = tile.iota_vec[pixel.h]
-        add_elbo_log_term!(elbo_vars, this_pixel, iota)
-        add_scaled_sfs!(elbo_vars.elbo,
-                        elbo_vars.E_G, -iota,
-                        elbo_vars.calculate_hessian &&
-                        elbo_vars.calculate_derivs)
-
-        # Subtract the log factorial term. This is not a function of the
-        # parameters so the derivatives don't need to be updated. Note that
-        # even though this does not affect the ELBO's maximum, it affects
-        # the optimization convergence criterion, so I will leave it in for now.
-        elbo_vars.elbo.v[1] -= lfact(this_pixel)
+    FSMSensitiveFloatMatrices() = begin
+        new(fs0mMatrix(), fs1mMatrix(),
+            fs0mMatrix(), fs1mMatrix(),
+            fs0mMatrix(), fs1mMatrix(),
+            fs0mMatrix(), fs1mMatrix(),
+            Matrix{Complex{Float64}}())
     end
 end
 
 
+function initialize_fsm_sf_matrices!(
+                        fsm_vec::Vector{FSMSensitiveFloatMatrices},
+                        ea::ElboArgs{Float64},
+                        psf_image_vec::Array{Matrix{Float64}})
+    # Get the extreme active pixels in each band.
+    h_lower = Int[typemax(Int) for b in ea.images ]
+    w_lower = Int[typemax(Int) for b in ea.images ]
+    h_upper = Int[0 for b in ea.images ]
+    w_upper = Int[0 for b in ea.images ]
 
-
-"""
-Do it
-"""
-function get_source_tile_fsm_matrix{NumType <: Number}(
-                    tile::ImageTile,
-                    ea::ElboArgs{NumType},
-                    s::Integer,
-                    elbo_vars::ElboIntermediateVariables{NumType},
-                    star_mcs::Array{BvnComponent{NumType}, 2},
-                    gal_mcs::Array{GalaxyCacheComponent{NumType}, 4},
-                    tile_sources::Vector{Int},
-                    calculate_derivs::Bool,
-                    calculate_hessian::Bool;
-                    include_epsilon::Bool=false)
-
-    fs0m_tile = Array{SensitiveFloat{StarPosParams, NumType}}(size(tile.pixels))
-    fs1m_tile = Array{SensitiveFloat{GalaxyPosParams, NumType}}(size(tile.pixels))
-
-    h_width, w_width = size(tile.pixels)
-    for w in 1:w_width, h in 1:h_width
-        this_pixel = tile.pixels[h, w]
-        if !Base.isnan(this_pixel)
-              # TODO: Have this store all sources.
-              populate_fsm_vecs!(
-                  elbo_vars, ea, tile_sources, tile, h, w, gal_mcs, star_mcs)
-
-              fs0m_tile[h, w] = deepcopy(elbo_vars.fs0m_vec[s])
-              fs1m_tile[h, w] = deepcopy(elbo_vars.fs1m_vec[s])
-        end
+    for pixel in ea.active_pixels
+        tile = ea.images[pixel.n].tiles[pixel.tile_ind]
+        h_lower[pixel.n] = min(h_lower[pixel.n], tile.h_range.start)
+        h_upper[pixel.n] = max(h_upper[pixel.n], tile.h_range.stop)
+        w_lower[pixel.n] = min(w_lower[pixel.n], tile.w_range.start)
+        w_upper[pixel.n] = max(w_upper[pixel.n], tile.w_range.stop)
     end
 
-    fs0m_tile, fs1m_tile
+    sa_n = length(ea.active_sources)
+    # Pre-allocate arrays.
+    for b in 1:ea.N
+        psf_image = psf_image_vec[b]
+
+        h_width = h_upper[b] - h_lower[b] + 1
+        w_width = w_upper[b] - w_lower[b] + 1
+
+        fsm_vec[b].fs0m_image = zero_sensitive_float_array(
+            StarPosParams, Float64, sa_n, h_width, w_width);
+        fsm_vec[b].fs1m_image = zero_sensitive_float_array(
+            GalaxyPosParams, Float64, sa_n, h_width, w_width);
+        fsm_vec[b].fs0m_conv = zero_sensitive_float_array(
+            StarPosParams, Float64, sa_n, h_width, w_width);
+        fsm_vec[b].fs1m_conv = zero_sensitive_float_array(
+            GalaxyPosParams, Float64, sa_n, h_width, w_width);
+
+        (fft_size1, fft_size2) =
+            (h_width + size(psf_image, 1) - 1, w_width + size(psf_image, 2) - 1)
+        fsm_vec[b].psf_fft = zeros(Complex{Float64}, fft_size1, fft_size2);
+        fsm_vec[b].psf_fft[1:size(psf_image, 1), 1:size(psf_image, 2)] = psf_image;
+        fft!(fsm_vec[b].psf_fft);
+
+        fsm_vec[b].fs0m_image_padded =
+            zero_sensitive_float_array(StarPosParams, Float64, sa_n,
+            fft_size1, fft_size2);
+        fsm_vec[b].fs1m_image_padded =
+            zero_sensitive_float_array(GalaxyPosParams, Float64, sa_n,
+            fft_size1, fft_size2);
+
+        fsm_vec[b].fs0m_conv_padded =
+            zero_sensitive_float_array(StarPosParams, Float64, sa_n,
+            fft_size1, fft_size2);
+        fsm_vec[b].fs1m_conv_padded =
+            zero_sensitive_float_array(GalaxyPosParams, Float64, sa_n,
+            fft_size1, fft_size2);
+    end
 end
 
 
@@ -186,8 +184,6 @@ function convolve_sensitive_float_matrix{ParamType <: ParamSet}(
 
     sf_matrix_out
 end
-
-
 
 
 function set_point_psf!(ea::ElboArgs, point_psf_width::Float64)
@@ -290,37 +286,33 @@ end
 
 
 
-function convolve_fsm_images!{NumType <: Number}(
-    fs0m_image::Array{SensitiveFloat{StarPosParams, NumType}, 2},
-    fs1m_image::Array{SensitiveFloat{GalaxyPosParams, NumType}, 2},
-    fs0m_image_padded::Array{SensitiveFloat{StarPosParams, NumType}, 2},
-    fs1m_image_padded::Array{SensitiveFloat{GalaxyPosParams, NumType}, 2},
-    fs0m_conv::Array{SensitiveFloat{StarPosParams, NumType}, 2},
-    fs1m_conv::Array{SensitiveFloat{GalaxyPosParams, NumType}, 2},
-    fs0m_conv_padded::Array{SensitiveFloat{StarPosParams, NumType}, 2},
-    fs1m_conv_padded::Array{SensitiveFloat{GalaxyPosParams, NumType}, 2},
-    psf_fft::Matrix{Complex{Float64}})
+function convolve_fsm_images!{NumType <: Number}(fsms::FSMSensitiveFloatMatrices)
 
-    for h in 1:size(fs0m_image, 1), w in 1:size(fs0m_image, 2)
-        fs0m_image_padded[h, w] = fs0m_image[h, w];
-        fs1m_image_padded[h, w] = fs1m_image[h, w];
+    for h in 1:size(fsms.fs0m_image, 1), w in 1:size(fsms.fs0m_image, 2)
+        fsms.fs0m_image_padded[h, w] = fsms.fs0m_image[h, w];
+        fsms.fs1m_image_padded[h, w] = fsms.fs1m_image[h, w];
     end
 
     conv_time = time()
-    convolve_sensitive_float_matrix!(fs0m_image_padded, psf_fft, fs0m_conv_padded);
-    convolve_sensitive_float_matrix!(fs1m_image_padded, psf_fft, fs1m_conv_padded);
+    convolve_sensitive_float_matrix!(
+        fsms.fs0m_image_padded, fsms.psf_fft, fsms.fs0m_conv_padded);
+    convolve_sensitive_float_matrix!(
+        fsms.fs1m_image_padded, fsms.psf_fft, fsms.fs1m_conv_padded);
     conv_time = time() - conv_time
     println("Convolution time: ", conv_time)
 
-    pad_pix_h = Integer((size(fs0m_image_padded, 1) - size(fs0m_image, 1)) / 2)
-    pad_pix_w = Integer((size(fs0m_image_padded, 2) - size(fs0m_image, 2)) / 2)
+    pad_pix_h = Integer((size(fsms.fs0m_image_padded, 1) - size(fsms.fs0m_image, 1)) / 2)
+    pad_pix_w = Integer((size(fsms.fs0m_image_padded, 2) - size(fsms.fs0m_image, 2)) / 2)
 
-    fs0m_conv = fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
-                                 (pad_pix_w + 1):(end - pad_pix_w)];
-    fs1m_conv = fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
-                                 (pad_pix_w + 1):(end - pad_pix_w)];
+    fsms.fs0m_conv = fsms.fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                                           (pad_pix_w + 1):(end - pad_pix_w)];
+    fsms.fs1m_conv = fsms.fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                                           (pad_pix_w + 1):(end - pad_pix_w)];
 
-    return fs0m_conv, fs1m_conv
+    return true
 end
+
+
+
 
 end
