@@ -172,18 +172,19 @@ function convolve_sensitive_float_matrix!{ParamType <: ParamSet}(
 end
 
 
-function convolve_sensitive_float_matrix{ParamType <: ParamSet}(
-    sf_matrix::Matrix{SensitiveFloat{ParamType, Float64}},
-    conv_fft::Matrix{Complex{Float64}})
-
-    sf_matrix_out =
-        SensitiveFloat{ParamType, Float64}[
-            zero_sensitive_float(ParamType, Float64, n_active_sources) for sf in sf_matrix]
-
-    convolve_sensitive_float_matrix!(sf_matrix, conv_fft, sf_matrix_out)
-
-    sf_matrix_out
-end
+# function convolve_sensitive_float_matrix{ParamType <: ParamSet}(
+#     sf_matrix::Matrix{SensitiveFloat{ParamType, Float64}},
+#     conv_fft::Matrix{Complex{Float64}})
+#
+#     sf_matrix_out =
+#         SensitiveFloat{ParamType, Float64}[
+#             zero_sensitive_float(ParamType, Float64, n_active_sources)
+#             for sf in sf_matrix]
+#
+#     convolve_sensitive_float_matrix!(sf_matrix, conv_fft, sf_matrix_out)
+#
+#     sf_matrix_out
+# end
 
 
 function set_point_psf!(ea::ElboArgs, point_psf_width::Float64)

@@ -24,6 +24,7 @@ const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
 wd = pwd()
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+
 using PSFConvolution
 
 run, camcol, field = (3900, 6, 269)
@@ -93,8 +94,8 @@ sbs = load_source_brightnesses(ea,
     calculate_derivs=elbo_vars.calculate_derivs,
     calculate_hessian=elbo_vars.calculate_hessian);
 
-star_mcs_vec = Array(Array{BvnComponent{NumType}, 2}, ea.N);
-gal_mcs_vec = Array(Array{GalaxyCacheComponent{NumType}, 4}, ea.N);
+star_mcs_vec = Array(Array{BvnComponent{Float64}, 2}, ea.N);
+gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
 
 foo = time() - elbo_time
 for b=1:ea.N
@@ -104,13 +105,16 @@ for b=1:ea.N
             calculate_hessian=elbo_vars.calculate_hessian)
 end
 
+b = 1
+# for b=1:ea.N
 
-for b=1:ea.N
     gal_mcs = gal_mcs_vec[b];
     star_mcs = star_mcs_vec[b];
 
-    for pixel in ea.active_pixels
-        if pixel.n == b
+    pixel_ind = findfirst([ pixel.n == b for pixel in ea.active_pixels ])
+    pixel = ea.active_pixels[pixel_ind]
+    # for pixel in ea.active_pixels
+        # if pixel.n == b
             # TODO: do this for all the sources.
             tile = ea.images[pixel.n].tiles[pixel.tile_ind]
             tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
@@ -121,12 +125,43 @@ for b=1:ea.N
                           fsm_vec[b].fs0m_image[h, w],
                           fsm_vec[b].fs1m_image[h, w],
                           sa, b, x, true, gal_mcs, star_mcs)
-        end
-    end
+        # end
+    # end
 
 
     ########################
+    # Works:
+    using PSFConvolution.convolve_sensitive_float_matrix!
+
+    fsms = fsm_vec[b];
+
+    for h in 1:size(fsms.fs0m_image, 1), w in 1:size(fsms.fs0m_image, 2)
+        fsms.fs0m_image_padded[h, w] = fsms.fs0m_image[h, w];
+        fsms.fs1m_image_padded[h, w] = fsms.fs1m_image[h, w];
+    end
+
+    conv_time = time()
+    convolve_sensitive_float_matrix!(
+        fsms.fs0m_image_padded, fsms.psf_fft, fsms.fs0m_conv_padded);
+    convolve_sensitive_float_matrix!(
+        fsms.fs1m_image_padded, fsms.psf_fft, fsms.fs1m_conv_padded);
+    conv_time = time() - conv_time
+    println("Convolution time: ", conv_time)
+
+    pad_pix_h = Integer((size(fsms.fs0m_image_padded, 1) - size(fsms.fs0m_image, 1)) / 2)
+    pad_pix_w = Integer((size(fsms.fs0m_image_padded, 2) - size(fsms.fs0m_image, 2)) / 2)
+
+    fsms.fs0m_conv = fsms.fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                                           (pad_pix_w + 1):(end - pad_pix_w)];
+    fsms.fs1m_conv = fsms.fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
+                                           (pad_pix_w + 1):(end - pad_pix_w)];
+
+
+
+    # Segfaults:
     PSFConvolution.convolve_fsm_images!(fsm_vec[b]);
+
+
 
     #################################
     # iterate over the pixels
@@ -135,7 +170,8 @@ for b=1:ea.N
         sbs, star_mcs, gal_mcs,
         fsm_vec[b].fs0m_conv, fsm_vec[b].fs1m_conv,
         h_lower, w_lower, false)
-end
+
+# end
 
 elbo_time = time() - elbo_time
 
