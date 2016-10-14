@@ -1,3 +1,16 @@
+
+
+
+# Requires branch fsm_matrix of Celeste.jl
+# Run from the CelesteDev.jl directory
+"""
+To reproduce segfault:
+Check out branch fsm_matrix of Celeste.jl (commit d7aa6)
+Run the below script in the CelesteDev.jl directory
+"""
+
+
+
 using Celeste: Model, DeterministicVI
 
 import Celeste: Infer, DeterministicVI, ParallelRun
@@ -21,9 +34,8 @@ using PyPlot
 ##########
 # Ensure that test images are available.
 const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
-wd = pwd()
 
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+include("rasterized_psf/predicted_image.jl")
 
 using PSFConvolution
 
