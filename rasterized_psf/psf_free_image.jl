@@ -1,16 +1,3 @@
-
-
-
-# Requires branch fsm_matrix of Celeste.jl
-# Run from the CelesteDev.jl directory
-"""
-To reproduce segfault:
-Check out branch fsm_matrix of Celeste.jl (commit d7aa6)
-Run the below script in the CelesteDev.jl directory
-"""
-
-
-
 using Celeste: Model, DeterministicVI
 
 import Celeste: Infer, DeterministicVI, ParallelRun
@@ -60,9 +47,12 @@ ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [sa]; psf_K=1);
 Infer.fit_object_psfs!(ea, ea.active_sources);
 Infer.load_active_pixels!(ea);
 
-elbo_time = time()
+# For compiling
 elbo = DeterministicVI.elbo(ea);
-elbo_time = time() - elbo_time
+
+current_elbo_time = time()
+elbo = DeterministicVI.elbo(ea);
+current_elbo_time = time() - current_elbo_time
 
 
 ##############
@@ -101,7 +91,6 @@ using DeterministicVI.populate_fsm!
 
 elbo_time = time()
 
-
 sbs = load_source_brightnesses(ea,
     calculate_derivs=elbo_vars.calculate_derivs,
     calculate_hessian=elbo_vars.calculate_hessian);
@@ -117,80 +106,25 @@ for b=1:ea.N
             calculate_hessian=elbo_vars.calculate_hessian)
 end
 
-b = 1
-# for b=1:ea.N
-
-    gal_mcs = gal_mcs_vec[b];
-    star_mcs = star_mcs_vec[b];
-
-    pixel_ind = findfirst([ pixel.n == b for pixel in ea.active_pixels ])
-    pixel = ea.active_pixels[pixel_ind]
-    # for pixel in ea.active_pixels
-        # if pixel.n == b
-            # TODO: do this for all the sources.
-            tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-            tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
-            h = pixel.h
-            w = pixel.w
-            x = Float64[tile.h_range[h], tile.w_range[w]]
-            populate_fsm!(elbo_vars, ea,
-                          fsm_vec[b].fs0m_image[h, w],
-                          fsm_vec[b].fs1m_image[h, w],
-                          sa, b, x, true, gal_mcs, star_mcs)
-        # end
-    # end
-
-
-    ########################
-    # Works:
-    using PSFConvolution.convolve_sensitive_float_matrix!
-
-    fsms = fsm_vec[b];
-
-    for h in 1:size(fsms.fs0m_image, 1), w in 1:size(fsms.fs0m_image, 2)
-        fsms.fs0m_image_padded[h, w] = fsms.fs0m_image[h, w];
-        fsms.fs1m_image_padded[h, w] = fsms.fs1m_image[h, w];
-    end
-
-    conv_time = time()
-    convolve_sensitive_float_matrix!(
-        fsms.fs0m_image_padded, fsms.psf_fft, fsms.fs0m_conv_padded);
-    convolve_sensitive_float_matrix!(
-        fsms.fs1m_image_padded, fsms.psf_fft, fsms.fs1m_conv_padded);
-    conv_time = time() - conv_time
-    println("Convolution time: ", conv_time)
-
-    pad_pix_h = Integer((size(fsms.fs0m_image_padded, 1) - size(fsms.fs0m_image, 1)) / 2)
-    pad_pix_w = Integer((size(fsms.fs0m_image_padded, 2) - size(fsms.fs0m_image, 2)) / 2)
-
-    fsms.fs0m_conv = fsms.fs0m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
-                                           (pad_pix_w + 1):(end - pad_pix_w)];
-    fsms.fs1m_conv = fsms.fs1m_conv_padded[(pad_pix_h + 1):(end - pad_pix_h),
-                                           (pad_pix_w + 1):(end - pad_pix_w)];
-
-
-
-    # Segfaults:
-    PSFConvolution.convolve_fsm_images!(fsm_vec[b]);
-
-
-
-    #################################
-    # iterate over the pixels
-    PSFConvolution.get_expected_brightness_from_image!(
-        ea, elbo_vars, ea.active_pixels, b, s,
-        sbs, star_mcs, gal_mcs,
-        fsm_vec[b].fs0m_conv, fsm_vec[b].fs1m_conv,
-        h_lower, w_lower, false)
-
-# end
+clear!(elbo_vars.elbo)
+for b in 1:ea.N
+    accumulate_band_in_elbo!(ea, elbo_vars, fsm_vec[b], sbs, star_mcs_vec, gal_mcs_vec, b)
+end
 
 elbo_time = time() - elbo_time
 
+elbo_time / current_elbo_time
 
 
 
+# The FFT is taking almost all the time.
+@profile begin
+    for i in 1:10
+        add_source_to_elbo!(ea, elbo_vars, s, sbs, star_mcs_vec, gal_mcs_vec, fsm_vec);
+    end
+end
 
+Profile.print()
 
 
 ######################################
