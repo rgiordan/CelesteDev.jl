@@ -24,9 +24,10 @@ using DeterministicVI.ImageTile
 using DeterministicVI.SourceBrightness
 using DeterministicVI.StarPosParams
 using DeterministicVI.GalaxyPosParams
+using DeterministicVI.CanonicalParams
 
 
-typealias GMatrix Matrix{SensitiveFloat{StarPosParams, Float64}}
+typealias GMatrix Matrix{SensitiveFloat{CanonicalParams, Float64}}
 typealias fs0mMatrix Matrix{SensitiveFloat{StarPosParams, Float64}}
 typealias fs1mMatrix Matrix{SensitiveFloat{GalaxyPosParams, Float64}}
 
@@ -299,7 +300,7 @@ function populate_fsm_image!(
             h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
             w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
 
-            x = Float64[tile.h_range[h], tile.w_range[w]]
+            x = Float64[tile.h_range[pixel.h], tile.w_range[pixel.w]]
             populate_fsm!(elbo_vars, ea,
                           fsms.fs0m_image[h_fsm, w_fsm],
                           fsms.fs1m_image[h_fsm, w_fsm],

@@ -62,7 +62,7 @@ psf_spread = 0.5
 psf_comp = Model.PsfComponent(1.0, Float64[0, 0],
     Float64[ psf_spread 0.0; 0.0 psf_spread ]);
 psf_image = PSF.get_psf_at_point(PsfComponent[psf_comp])
-
+set_point_psf!(ea, 0.5);
 
 ######################################
 using SensitiveFloats.zero_sensitive_float_array
@@ -108,7 +108,7 @@ end
 
 clear!(elbo_vars.elbo)
 for b in 1:ea.N
-    accumulate_band_in_elbo!(ea, elbo_vars, fsm_vec[b], sbs, star_mcs_vec, gal_mcs_vec, b)
+    PSFConvolution.accumulate_band_in_elbo!(ea, elbo_vars, fsm_vec[b], sbs, star_mcs_vec, gal_mcs_vec, b)
 end
 
 elbo_time = time() - elbo_time
