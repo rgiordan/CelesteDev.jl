@@ -11,6 +11,8 @@ include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/celeste_tools/celeste_tools.jl")
+
 using PSFConvolution
 
 
@@ -21,15 +23,6 @@ using Base.Test
 using Distributions
 
 using PyPlot
-
-
-import Base.print
-function print(ce::CatalogEntry)
-  for field in fieldnames(ce)
-    println(field, ": ", getfield(ce, field))
-  end
-end
-
 
 
 ##########
@@ -140,7 +133,17 @@ elbo.v
 plot((elbo_fft.d + 1e-6) ./ (elbo.d + 1e-6), "o")
 plot((elbo_fft.h + 1e-6) ./ (elbo.h + 1e-6), "o")
 
+########################################
+# Debugging
 
+b = 3;
+fsms = fsm_vec[b];
+sb = sbs[s];
+PSFConvolution.clear_brightness!(fsms);
+PSFConvolution.populate_fsm_image!(ea, elbo_vars, s, b, star_mcs_vec[s], gal_mcs_vec[s], fsms);
+PSFConvolution.accumulate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sb)
+
+matshow([ sf.v[1] for sf in fsms.E_G ])
 
 
 ########################################
@@ -159,36 +162,26 @@ Profile.print()
 
 ######################################
 
-
+sa = 1
+b = 3
 
 ea.vp[sa][ids.a] = [ 1, 0 ]
 ea.vp[sa][ids.u] = WCS.pix_to_world(ea.images[b].wcs,
   floor(WCS.world_to_pix(ea.images[b].wcs, ea.vp[sa][ids.u])) + 0.5)
 
-source_tiles = ea.images[b].tiles[find([sa in tile for tile in tile_source_map[b] ])];
-min_h = minimum([tile.h_range.start for tile in source_tiles])
-max_h = maximum([tile.h_range.stop for tile in source_tiles])
-min_w = minimum([tile.w_range.start for tile in source_tiles])
-max_w = maximum([tile.w_range.stop for tile in source_tiles])
-image = Float64[NaN for h=1:(max_h - min_h + 1), w=1:(max_w - min_w + 1)];
+sub_image = get_source_pixel_range(sa, b, ea);
 
-# Show the active pixels
-for pixel in ea.active_pixels
-    if pixel.n == b
-        tile = ea.images[b].tiles[pixel.tile_ind]
-        image[tile.h_range.start - min_h + pixel.h,
-              tile.w_range.start - min_w + pixel.w] = 1
-    end
-end
+# Display rendered image
+image = render_source(ea, sa, sub_image, false);
+matshow(image); title("Rendered image"); colorbar()
 
+# Display original image
+image = show_source_image(ea, sa, sub_image);
+matshow(image); title("Original image"); colorbar()
 
-for tile in source_tiles
-  pix = DeterministicVI.tile_predicted_image(tile, ea, Int64[sa], include_epsilon=false)
-  image[tile.h_range - min_h + 1, tile.w_range - min_w + 1] = pix
-end
-image[abs(image) .< 1e-8 ] = 0;
-matshow(image); title(psf_spread); colorbar()
-
+# Active pixel map
+active_image = show_active_pixels(ea, sub_image, b);
+matshow(active_image); title("Active pixels");
 
 
 
