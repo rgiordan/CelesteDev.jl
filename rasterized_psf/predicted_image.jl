@@ -4,7 +4,8 @@ using DeterministicVI.load_bvn_mixtures
 using DeterministicVI.load_source_brightnesses
 using DeterministicVI.ElboIntermediateVariables
 using DeterministicVI.get_expected_pixel_brightness!
-using DeterministicVI.populate_fsm_vecs!
+using Celeste.Model.populate_fsm_vecs!
+using Celeste.Model.populate_fsm!
 using Celeste.Model.ParamSet
 using SensitiveFloats.SensitiveFloat
 using DeterministicVI.BvnComponent
@@ -25,7 +26,7 @@ using DeterministicVI.SourceBrightness
 using DeterministicVI.StarPosParams
 using DeterministicVI.GalaxyPosParams
 using DeterministicVI.CanonicalParams
-
+using DeterministicVI.accumulate_source_pixel_brightness!
 
 typealias GMatrix Matrix{SensitiveFloat{CanonicalParams, Float64}}
 typealias fs0mMatrix Matrix{SensitiveFloat{StarPosParams, Float64}}
@@ -235,6 +236,9 @@ function convolve_fsm_images!(fsms::FSMSensitiveFloatMatrices)
     return true
 end
 
+using StaticArrays
+import Celeste.Model
+import Celeste.Model.SkyPatch
 
 """
 Retrun a "PSF component" with a narrow width to blur a point source.  This is
@@ -245,8 +249,8 @@ TODO: replace this with Lanczos interpolation and get rid of BVN components
 for stars entirely
 """
 function set_point_psf!(ea::ElboArgs, point_psf_width::Float64)
-    point_psf = Model.PsfComponent(1.0, Float64[0, 0],
-        Float64[ point_psf_width 0.0; 0.0 point_psf_width ])
+    point_psf = Model.PsfComponent(1.0, SVector{2,Float64}([0, 0]),
+        SMatrix{2, 2, Float64, 4}([ point_psf_width 0.0; 0.0 point_psf_width ]))
     for s in 1:size(ea.patches)[1], b in 1:size(ea.patches)[2]
       ea.patches[s, b] = SkyPatch(ea.patches[s, b], Model.PsfComponent[ point_psf ]);
     end
@@ -300,11 +304,14 @@ function populate_fsm_image!(
             h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
             w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
 
-            x = Float64[tile.h_range[pixel.h], tile.w_range[pixel.w]]
-            populate_fsm!(elbo_vars, ea,
+            x = SVector{2, Float64}([tile.h_range[pixel.h], tile.w_range[pixel.w]])
+            populate_fsm!(elbo_vars.bvn_derivs,
                           fsms.fs0m_image[h_fsm, w_fsm],
                           fsms.fs1m_image[h_fsm, w_fsm],
-                          s, b, x, true, gal_mcs, star_mcs)
+                          true, true,
+                          s, x, true, Inf,
+                          ea.patches[s, b].wcs_jacobian,
+                          gal_mcs, star_mcs)
         end
     end
     convolve_fsm_images!(fsms);
@@ -362,7 +369,7 @@ function accumulate_band_in_elbo!(
     sbs::Vector{SourceBrightness{Float64}},
     star_mcs_vec::Array{Array{BvnComponent{Float64}, 2}},
     gal_mcs_vec::Array{Array{GalaxyCacheComponent{Float64}, 4}},
-    b::Int)
+    b::Int, include_epsilon::Bool)
 
     clear_brightness!(fsms)
 
