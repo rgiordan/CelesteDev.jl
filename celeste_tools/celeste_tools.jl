@@ -80,3 +80,49 @@ function show_active_pixels(ea::ElboArgs, si::SubImage, b::Int)
     end
     return image
 end
+
+
+
+
+
+
+
+# TODO: copy over
+using SensitiveFloats.zero_sensitive_float_array
+using SensitiveFloats.SensitiveFloat
+using PSFConvolution.FSMSensitiveFloatMatrices
+using PSFConvolution.initialize_fsm_sf_matrices!
+
+using Celeste.DeterministicVI.ElboArgs
+using Celeste.DeterministicVI.ElboIntermediateVariables
+using DeterministicVI.BvnComponent
+using DeterministicVI.GalaxyCacheComponent
+using DeterministicVI.load_bvn_mixtures
+using DeterministicVI.load_source_brightnesses
+using Celeste.Model.populate_fsm!
+using PSFConvolution.FSMSensitiveFloatMatrices
+using PSFConvolution.accumulate_band_in_elbo!
+
+function elbo_likelihood_with_fft!(
+    ea::ElboArgs, elbo_vars::ElboIntermediateVariables,
+    fsm_vec::Array{FSMSensitiveFloatMatrices})
+
+    sbs = load_source_brightnesses(ea,
+        calculate_derivs=elbo_vars.calculate_derivs,
+        calculate_hessian=elbo_vars.calculate_hessian);
+
+    star_mcs_vec = Array(Array{BvnComponent{Float64}, 2}, ea.N);
+    gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
+    for b=1:ea.N
+        star_mcs_vec[b], gal_mcs_vec[b] =
+            load_bvn_mixtures(ea, b,
+                calculate_derivs=elbo_vars.calculate_derivs,
+                calculate_hessian=elbo_vars.calculate_hessian)
+    end
+
+    clear!(elbo_vars.elbo)
+    for b in 1:ea.N
+        accumulate_band_in_elbo!(
+            ea, elbo_vars, fsm_vec[b], sbs, star_mcs_vec, gal_mcs_vec, b, true)
+    end
+end

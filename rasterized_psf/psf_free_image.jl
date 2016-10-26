@@ -52,7 +52,7 @@ cat_local = vcat(catalog[sa], catalog[neighbors]);
 
 vp = Vector{Float64}[init_source(ce) for ce in cat_local];
 patches, tile_source_map = Infer.get_tile_source_map(tiled_images, cat_local);
-ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [1]; psf_K=1);
+ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [1]; psf_K=2);
 Infer.fit_object_psfs!(ea, ea.active_sources);
 Infer.load_active_pixels!(ea);
 length(ea.active_pixels)
@@ -67,71 +67,51 @@ current_elbo_time = time() - current_elbo_time
 ##############
 
 # Get the actual PSF images using the /first/ source.
-Infer.fit_object_psfs!(ea, ea.active_sources);
 psf_image_vec =
     Matrix{Float64}[ PSF.get_psf_at_point(ea.patches[1, b].psf) for b in 1:ea.N ];
 
-# Then set the ea "psf" to a small width to interpolate the pixelated PSF.
-PSFConvolution.set_point_psf!(ea, 0.5);
+using StaticArrays
+import Celeste.Model
+import Celeste.Model.SkyPatch
+
+ea_fft = ElboArgs(tiled_images, deepcopy(vp), tile_source_map,
+                  deepcopy(patches), [1]; psf_K=1);
+Infer.load_active_pixels!(ea_fft);
+
+# Then set the fft ea "psf" to a small width to interpolate the pixelated PSF.
+point_psf_width = 0.5;
+point_psf = Model.PsfComponent(1.0, SVector{2,Float64}([0, 0]),
+    SMatrix{2, 2, Float64, 4}([ point_psf_width 0.0; 0.0 point_psf_width ]));
+for s in 1:size(ea_fft.patches)[1], b in 1:size(ea_fft.patches)[2]
+    ea_fft.patches[s, b] = SkyPatch(ea_fft.patches[s, b], Model.PsfComponent[ point_psf ]);
+end
+
 
 ######################################
-using SensitiveFloats.zero_sensitive_float_array
-using SensitiveFloats.SensitiveFloat
-using PSFConvolution.FSMSensitiveFloatMatrices
-using PSFConvolution.initialize_fsm_sf_matrices!
 
-s = ea.active_sources[1]
+elbo_vars_fft = DeterministicVI.ElboIntermediateVariables(
+    Float64, ea_fft.S, length(ea_fft.active_sources));
 
-elbo_vars = DeterministicVI.ElboIntermediateVariables(
-    Float64, ea.S, length(ea.active_sources));
+fsm_vec = FSMSensitiveFloatMatrices[FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
+PSFConvolution.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_vec);
 
-fsm_vec = FSMSensitiveFloatMatrices[FSMSensitiveFloatMatrices() for b in 1:ea.N];
-PSFConvolution.initialize_fsm_sf_matrices!(fsm_vec, ea, psf_image_vec);
-
-
-############### Process active pixels
-using DeterministicVI.BvnComponent
-using DeterministicVI.GalaxyCacheComponent
-using DeterministicVI.load_bvn_mixtures
-using DeterministicVI.load_source_brightnesses
-using Celeste.Model.populate_fsm!
-
+# For compilation
+elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, fsm_vec);
 
 elbo_time = time()
-
-sbs = load_source_brightnesses(ea,
-    calculate_derivs=elbo_vars.calculate_derivs,
-    calculate_hessian=elbo_vars.calculate_hessian);
-
-star_mcs_vec = Array(Array{BvnComponent{Float64}, 2}, ea.N);
-gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
-
-foo = time() - elbo_time
-for b=1:ea.N
-    star_mcs_vec[b], gal_mcs_vec[b] =
-        load_bvn_mixtures(ea, b,
-            calculate_derivs=elbo_vars.calculate_derivs,
-            calculate_hessian=elbo_vars.calculate_hessian)
-end
-
-clear!(elbo_vars.elbo)
-for b in 1:ea.N
-    PSFConvolution.accumulate_band_in_elbo!(
-        ea, elbo_vars, fsm_vec[b], sbs, star_mcs_vec, gal_mcs_vec, b, true)
-end
-
-DeterministicVI.subtract_kl!(ea, elbo_vars.elbo, calculate_derivs=true);
-
+elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, fsm_vec);
+DeterministicVI.subtract_kl!(ea, elbo_vars_fft.elbo, calculate_derivs=true);
 elbo_time = time() - elbo_time
+
 println("Time ratio: ", elbo_time / current_elbo_time)
 
 
-elbo_fft = deepcopy(elbo_vars.elbo);
+elbo_fft = deepcopy(elbo_vars_fft.elbo);
 
-elbo_fft.v
-elbo.v
-plot((elbo_fft.d + 1e-6) ./ (elbo.d + 1e-6), "o")
-plot((elbo_fft.h + 1e-6) ./ (elbo.h + 1e-6), "o")
+println(elbo_fft.v[1], " ", elbo.v[1])
+hcat(elbo_fft.d, elbo.d)
+# plot((elbo_fft.d + 1e-6) ./ (elbo.d + 1e-6), "o")
+# plot((elbo_fft.h + 1e-6) ./ (elbo.h + 1e-6), "o")
 
 ########################################
 # Debugging
@@ -140,7 +120,8 @@ b = 3;
 fsms = fsm_vec[b];
 sb = sbs[s];
 PSFConvolution.clear_brightness!(fsms);
-PSFConvolution.populate_fsm_image!(ea, elbo_vars, s, b, star_mcs_vec[s], gal_mcs_vec[s], fsms);
+PSFConvolution.populate_fsm_image!(
+    ea, elbo_vars, s, b, star_mcs_vec[s], gal_mcs_vec[s], fsms);
 PSFConvolution.accumulate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sb)
 
 matshow([ sf.v[1] for sf in fsms.E_G ])
@@ -162,14 +143,8 @@ Profile.print()
 
 ######################################
 
-sa = 1
 b = 3
-
-ea.vp[sa][ids.a] = [ 1, 0 ]
-ea.vp[sa][ids.u] = WCS.pix_to_world(ea.images[b].wcs,
-  floor(WCS.world_to_pix(ea.images[b].wcs, ea.vp[sa][ids.u])) + 0.5)
-
-sub_image = get_source_pixel_range(sa, b, ea);
+sub_image = get_source_pixel_range(ea.active_sources[1], b, ea);
 
 # Display rendered image
 image = render_source(ea, sa, sub_image, false);

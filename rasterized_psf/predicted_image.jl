@@ -236,28 +236,6 @@ function convolve_fsm_images!(fsms::FSMSensitiveFloatMatrices)
     return true
 end
 
-using StaticArrays
-import Celeste.Model
-import Celeste.Model.SkyPatch
-
-"""
-Retrun a "PSF component" with a narrow width to blur a point source.  This is
-just another way to do interpolation with a Gaussian kernel using the existing
-code.
-
-TODO: replace this with Lanczos interpolation and get rid of BVN components
-for stars entirely
-"""
-function set_point_psf!(ea::ElboArgs, point_psf_width::Float64)
-    point_psf = Model.PsfComponent(1.0, SVector{2,Float64}([0, 0]),
-        SMatrix{2, 2, Float64, 4}([ point_psf_width 0.0; 0.0 point_psf_width ]))
-    for s in 1:size(ea.patches)[1], b in 1:size(ea.patches)[2]
-      ea.patches[s, b] = SkyPatch(ea.patches[s, b], Model.PsfComponent[ point_psf ]);
-    end
-    ea.psf_K = 1
-    return true
-end
-
 
 function clear_fsms!(fsms::FSMSensitiveFloatMatrices)
     for sf in fsms.fs0m_image clear!(sf) end
@@ -410,7 +388,6 @@ function accumulate_band_in_elbo!(
         end
     end
 end
-
 
 
 end
