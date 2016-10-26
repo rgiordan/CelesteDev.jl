@@ -28,6 +28,8 @@ using DeterministicVI.GalaxyPosParams
 using DeterministicVI.CanonicalParams
 using DeterministicVI.accumulate_source_pixel_brightness!
 
+using StaticArrays
+
 typealias GMatrix Matrix{SensitiveFloat{CanonicalParams, Float64}}
 typealias fs0mMatrix Matrix{SensitiveFloat{StarPosParams, Float64}}
 typealias fs1mMatrix Matrix{SensitiveFloat{GalaxyPosParams, Float64}}
@@ -80,6 +82,7 @@ function initialize_fsm_sf_matrices!(
     h_upper = Int[0 for b in ea.images ]
     w_upper = Int[0 for b in ea.images ]
 
+    # TODO: no need to correspond to tile boundaries
     for pixel in ea.active_pixels
         tile = ea.images[pixel.n].tiles[pixel.tile_ind]
         h_lower[pixel.n] = min(h_lower[pixel.n], tile.h_range.start)
@@ -275,10 +278,9 @@ function populate_fsm_image!(
 
     clear_fsms!(fsms)
     for pixel in ea.active_pixels
-        if pixel.n == b
-            # TODO: do this for all the sources.
+        tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
+        if pixel.n == b && s in tile_sources
             tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-            tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
             h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
             w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
 
@@ -318,7 +320,6 @@ function accumulate_source_band_brightness!(
     for pixel in ea.active_pixels
         if pixel.n == b
             tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-            tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
             this_pixel = tile.pixels[pixel.h, pixel.w]
 
             # These are indices within the fs?m image.
@@ -352,7 +353,7 @@ function accumulate_band_in_elbo!(
     clear_brightness!(fsms)
 
     for s in 1:ea.S
-        populate_fsm_image!(ea, elbo_vars, s, b, star_mcs_vec[s], gal_mcs_vec[s], fsms)
+        populate_fsm_image!(ea, elbo_vars, s, b, star_mcs_vec[b], gal_mcs_vec[b], fsms)
         accumulate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
     end
 
@@ -360,31 +361,32 @@ function accumulate_band_in_elbo!(
         if pixel.n == b
             tile = ea.images[pixel.n].tiles[pixel.tile_ind]
             this_pixel = tile.pixels[pixel.h, pixel.w]
+            if !Base.isnan(this_pixel)
+                # These are indices within the fs?m image.
+                h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
+                w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
 
-            # These are indices within the fs?m image.
-            h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
-            w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
+                E_G = fsms.E_G[h_fsm, w_fsm]
+                var_G = fsms.var_G[h_fsm, w_fsm]
+                if include_epsilon
+                    # There are no derivatives with respect to epsilon, so can safely add
+                    # to the value.
+                    E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
+                end
 
-            E_G = fsms.E_G[h_fsm, w_fsm]
-            var_G = fsms.var_G[h_fsm, w_fsm]
-            if include_epsilon
-                # There are no derivatives with respect to epsilon, so can safely add
-                # to the value.
-                E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
+                # Add the terms to the elbo given the brightness.
+                iota = tile.iota_vec[pixel.h]
+                add_elbo_log_term!(elbo_vars, E_G, var_G, elbo_vars.elbo, this_pixel, iota)
+                add_scaled_sfs!(elbo_vars.elbo, E_G, -iota,
+                                elbo_vars.calculate_hessian &&
+                                elbo_vars.calculate_derivs)
+
+                # Subtract the log factorial term. This is not a function of the
+                # parameters so the derivatives don't need to be updated. Note that
+                # even though this does not affect the ELBO's maximum, it affects
+                # the optimization convergence criterion, so I will leave it in for now.
+                elbo_vars.elbo.v[1] -= lfact(this_pixel)
             end
-
-            # Add the terms to the elbo given the brightness.
-            iota = tile.iota_vec[pixel.h]
-            add_elbo_log_term!(elbo_vars, E_G, var_G, elbo_vars.elbo, this_pixel, iota)
-            add_scaled_sfs!(elbo_vars.elbo, E_G, -iota,
-                            elbo_vars.calculate_hessian &&
-                            elbo_vars.calculate_derivs)
-
-            # Subtract the log factorial term. This is not a function of the
-            # parameters so the derivatives don't need to be updated. Note that
-            # even though this does not affect the ELBO's maximum, it affects
-            # the optimization convergence criterion, so I will leave it in for now.
-            elbo_vars.elbo.v[1] -= lfact(this_pixel)
         end
     end
 end

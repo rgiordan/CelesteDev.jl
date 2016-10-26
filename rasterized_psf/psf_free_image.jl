@@ -76,7 +76,8 @@ import Celeste.Model.SkyPatch
 
 ea_fft = ElboArgs(tiled_images, deepcopy(vp), tile_source_map,
                   deepcopy(patches), [1]; psf_K=1);
-Infer.load_active_pixels!(ea_fft);
+load_active_pixels!(ea_fft, false);
+
 
 # Then set the fft ea "psf" to a small width to interpolate the pixelated PSF.
 point_psf_width = 0.5;
@@ -85,6 +86,11 @@ point_psf = Model.PsfComponent(1.0, SVector{2,Float64}([0, 0]),
 for s in 1:size(ea_fft.patches)[1], b in 1:size(ea_fft.patches)[2]
     ea_fft.patches[s, b] = SkyPatch(ea_fft.patches[s, b], Model.PsfComponent[ point_psf ]);
 end
+
+# matshow(PSF.get_psf_at_point([point_psf]))
+# matshow(psf_image_vec[3])
+# sum(PSF.get_psf_at_point([point_psf]))
+# sum(psf_image_vec[3])
 
 
 ######################################
@@ -105,7 +111,6 @@ elbo_time = time() - elbo_time
 
 println("Time ratio: ", elbo_time / current_elbo_time)
 
-
 elbo_fft = deepcopy(elbo_vars_fft.elbo);
 
 println(elbo_fft.v[1], " ", elbo.v[1])
@@ -113,18 +118,65 @@ hcat(elbo_fft.d, elbo.d)
 # plot((elbo_fft.d + 1e-6) ./ (elbo.d + 1e-6), "o")
 # plot((elbo_fft.h + 1e-6) ./ (elbo.h + 1e-6), "o")
 
-########################################
+
+
+
+######################################
+
 # Debugging
+populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec);
 
-b = 3;
-fsms = fsm_vec[b];
-sb = sbs[s];
-PSFConvolution.clear_brightness!(fsms);
-PSFConvolution.populate_fsm_image!(
-    ea, elbo_vars, s, b, star_mcs_vec[s], gal_mcs_vec[s], fsms);
-PSFConvolution.accumulate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sb)
+PyPlot.close("all")
+b = 5
+s = ea.active_sources[1]
+sub_image = get_source_pixel_range(s, b, ea);
+pix_loc =
+    WCS.world_to_pix(ea_fft.images[b].wcs, ea_fft.vp[s][ids.u]) -
+    Float64[sub_image.min_h - 1, sub_image.min_w - 1];
+plot_loc() = plot(pix_loc[2] - 1, pix_loc[1] - 1,  "ro")
 
-matshow([ sf.v[1] for sf in fsms.E_G ])
+# Display fft image
+fs0m_image = Float64[ sf.v[1] for sf in fsm_vec[b].fs0m_image ];
+fft_image = Float64[ sf.v[1] for sf in fsm_vec[b].E_G ];
+matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
+# The FFT fs0m is off-center for some reason
+# matshow(fs0m_image); title("fs0m image"); colorbar(); plot_loc()
+# matshow(psf_image_vec[b]); plot(25, 25, "ro"); title("PSF")
+
+# Display rendered image
+rendered_image = render_source(ea, s, sub_image, false);
+matshow(rendered_image); title("Rendered image"); colorbar(); plot_loc()
+
+# Display original image
+original_image = show_source_image(ea, s, sub_image);
+matshow(original_image); title("Original image"); colorbar(); plot_loc()
+
+
+
+# Active pixel map
+active_image = show_active_pixels(ea, sub_image, b);
+matshow(active_image); title("Active pixels"); plot_loc()
+
+active_image = show_active_pixels(ea_fft, sub_image, b);
+matshow(active_image); title("FFT Active pixels"); plot_loc()
+
+
+
+# Look at the mcs
+star_mcs, gal_mcs =
+    load_bvn_mixtures(ea, b,
+        calculate_derivs=false,
+        calculate_hessian=false);
+
+star_mcs_fft, gal_mcs_fft =
+    load_bvn_mixtures(ea_fft, b,
+        calculate_derivs=false,
+        calculate_hessian=false);
+
+pix_loc
+star_mcs_fft[1].the_mean - [ fsm_vec[b].h_lower - 1, fsm_vec[b].w_lower - 1 ]
+
+
 
 
 ########################################
@@ -141,24 +193,5 @@ end
 Profile.print()
 
 
-######################################
 
-b = 3
-sub_image = get_source_pixel_range(ea.active_sources[1], b, ea);
-
-# Display rendered image
-image = render_source(ea, sa, sub_image, false);
-matshow(image); title("Rendered image"); colorbar()
-
-# Display original image
-image = show_source_image(ea, sa, sub_image);
-matshow(image); title("Original image"); colorbar()
-
-# Active pixel map
-active_image = show_active_pixels(ea, sub_image, b);
-matshow(active_image); title("Active pixels");
-
-
-
-
-############
+##########
