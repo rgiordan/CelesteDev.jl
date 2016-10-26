@@ -302,7 +302,7 @@ end
 Updates fsms.E_G and fsms.var_G in place with the contributions from this
 source in this band.
 """
-function accumulate_source_band_brightness!(
+function populate_source_band_brightness!(
     ea::ElboArgs{Float64},
     elbo_vars::ElboIntermediateVariables{Float64},
     s::Int,
@@ -354,7 +354,7 @@ function accumulate_band_in_elbo!(
 
     for s in 1:ea.S
         populate_fsm_image!(ea, elbo_vars, s, b, star_mcs_vec[b], gal_mcs_vec[b], fsms)
-        accumulate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
+        populate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
     end
 
     for pixel in ea.active_pixels

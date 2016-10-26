@@ -131,7 +131,7 @@ end
 using StaticArrays
 
 using PSFConvolution.populate_fsm_image!
-using PSFConvolution.accumulate_source_band_brightness!
+using PSFConvolution.populate_source_band_brightness!
 
 function populate_fsm_vec!(
     ea::ElboArgs, elbo_vars::ElboIntermediateVariables,
@@ -151,6 +151,7 @@ function populate_fsm_vec!(
         for s in 1:ea.S
             populate_fsm_image!(
                 ea, elbo_vars, s, b, star_mcs_vec[b], gal_mcs_vec[b], fsm_vec[b])
+            populate_source_band_brightness!(ea, elbo_vars, s, b, fsm_vec[b], sbs[s])
         end
     end
 end

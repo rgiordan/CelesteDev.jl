@@ -54,7 +54,7 @@ vp = Vector{Float64}[init_source(ce) for ce in cat_local];
 patches, tile_source_map = Infer.get_tile_source_map(tiled_images, cat_local);
 ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [1]; psf_K=2);
 Infer.fit_object_psfs!(ea, ea.active_sources);
-Infer.load_active_pixels!(ea);
+load_active_pixels!(ea, false);
 length(ea.active_pixels)
 
 # For compiling
@@ -127,7 +127,7 @@ hcat(elbo_fft.d, elbo.d)
 populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec);
 
 PyPlot.close("all")
-b = 5
+b = 3
 s = ea.active_sources[1]
 sub_image = get_source_pixel_range(s, b, ea);
 pix_loc =
@@ -136,11 +136,9 @@ pix_loc =
 plot_loc() = plot(pix_loc[2] - 1, pix_loc[1] - 1,  "ro")
 
 # Display fft image
-fs0m_image = Float64[ sf.v[1] for sf in fsm_vec[b].fs0m_image ];
 fft_image = Float64[ sf.v[1] for sf in fsm_vec[b].E_G ];
 matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
-# The FFT fs0m is off-center for some reason
-# matshow(fs0m_image); title("fs0m image"); colorbar(); plot_loc()
+# matshow(fft_image); title("fs0m image"); colorbar(); plot_loc()
 # matshow(psf_image_vec[b]); plot(25, 25, "ro"); title("PSF")
 
 # Display rendered image
@@ -151,8 +149,6 @@ matshow(rendered_image); title("Rendered image"); colorbar(); plot_loc()
 original_image = show_source_image(ea, s, sub_image);
 matshow(original_image); title("Original image"); colorbar(); plot_loc()
 
-
-
 # Active pixel map
 active_image = show_active_pixels(ea, sub_image, b);
 matshow(active_image); title("Active pixels"); plot_loc()
@@ -162,7 +158,7 @@ matshow(active_image); title("FFT Active pixels"); plot_loc()
 
 
 
-# Look at the mcs
+# Look at the mcs.  This is ok.
 star_mcs, gal_mcs =
     load_bvn_mixtures(ea, b,
         calculate_derivs=false,
@@ -173,9 +169,64 @@ star_mcs_fft, gal_mcs_fft =
         calculate_derivs=false,
         calculate_hessian=false);
 
-pix_loc
-star_mcs_fft[1].the_mean - [ fsm_vec[b].h_lower - 1, fsm_vec[b].w_lower - 1 ]
+###############
+# Debugging
+# Look at fsm.
+populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec);
+s = ea.active_sources[1]
 
+PyPlot.close("all")
+b = 3
+
+star_mcs, gal_mcs =
+    load_bvn_mixtures(ea, b,
+        calculate_derivs=false,
+        calculate_hessian=false);
+
+
+x = SVector{2, Float64}(WCS.world_to_pix(ea_fft.images[b].wcs, ea_fft.vp[s][ids.u]))
+wcs_jacobian = ea.patches[s, b].wcs_jacobian;
+elbo_vars = DeterministicVI.ElboIntermediateVariables(
+    Float64, ea.S, length(ea.active_sources));
+
+fsms = fsm_vec[b];
+ea_fs0m_image = fill(0.0, size(fsms.fs0m_image));
+ea_fs1m_image = fill(0.0, size(fsms.fs1m_image));
+for pixel in ea.active_pixels
+  tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
+  if pixel.n == b && s in tile_sources
+      tile = ea.images[pixel.n].tiles[pixel.tile_ind]
+      h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
+      w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
+
+      x = SVector{2, Float64}([tile.h_range[pixel.h], tile.w_range[pixel.w]])
+      populate_fsm!(elbo_vars.bvn_derivs,
+                    elbo_vars.fs0m_vec[s], elbo_vars.fs1m_vec[s],
+                    false, false,
+                    s, x, true, Inf,
+                    wcs_jacobian, gal_mcs, star_mcs);
+      ea_fs0m_image[h_fsm, w_fsm] = elbo_vars.fs0m_vec[s].v[1]
+      ea_fs1m_image[h_fsm, w_fsm] = elbo_vars.fs1m_vec[s].v[1]
+  end
+end
+
+fs0m_image = Float64[ sf.v[1] for sf in fsm_vec[b].fs0m_image ];
+fs1m_image = Float64[ sf.v[1] for sf in fsm_vec[b].fs1m_image ];
+fs0m_conv = Float64[ sf.v[1] for sf in fsm_vec[b].fs0m_conv ];
+fs1m_conv = Float64[ sf.v[1] for sf in fsm_vec[b].fs1m_conv ];
+
+# matshow(ea_fs0m_image); colorbar()
+sum(ea_fs0m_image)
+sum(fs0m_image)
+
+sum(ea_fs1m_image)
+sum(fs1m_image)
+
+matshow(ea_fs0m_image); colorbar(); title("fs0m model")
+matshow(fs0m_conv); colorbar(); title("fs0m FFT")
+
+matshow(ea_fs1m_image); colorbar(); title("fs1m model")
+matshow(fs1m_conv); colorbar(); title("fs1m FFT")
 
 
 
