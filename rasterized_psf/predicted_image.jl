@@ -1,4 +1,4 @@
-module PSFConvolution
+#module PSFConvolution
 
 using DeterministicVI.load_bvn_mixtures
 using DeterministicVI.load_source_brightnesses
@@ -326,6 +326,7 @@ function populate_source_band_brightness!(
             h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
             w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
 
+            print(fsms.E_G[h_fsm, w_fsm].v[1], " to ")
             accumulate_source_pixel_brightness!(
                                 elbo_vars, ea,
                                 fsms.E_G[h_fsm, w_fsm],
@@ -333,6 +334,7 @@ function populate_source_band_brightness!(
                                 fsms.fs0m_conv[h_fsm, w_fsm],
                                 fsms.fs1m_conv[h_fsm, w_fsm],
                                 sb, b, s, active_source)
+            println(fsms.E_G[h_fsm, w_fsm].v[1])
         end
     end
 end
@@ -392,4 +394,4 @@ function accumulate_band_in_elbo!(
 end
 
 
-end
+#end

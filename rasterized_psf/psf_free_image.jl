@@ -13,7 +13,7 @@ include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/celeste_tools/celeste_tools.jl")
 
-using PSFConvolution
+# using PSFConvolution
 
 
 import Synthetic
@@ -99,7 +99,7 @@ elbo_vars_fft = DeterministicVI.ElboIntermediateVariables(
     Float64, ea_fft.S, length(ea_fft.active_sources));
 
 fsm_vec = FSMSensitiveFloatMatrices[FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
-PSFConvolution.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_vec);
+initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_vec);
 
 # For compilation
 elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, fsm_vec);
@@ -137,9 +137,19 @@ plot_loc() = plot(pix_loc[2] - 1, pix_loc[1] - 1,  "ro")
 
 # Display fft image
 fft_image = Float64[ sf.v[1] for sf in fsm_vec[b].E_G ];
+for pixel in ea.active_pixels
+    if pixel.n == b
+        tile = ea.images[pixel.n].tiles[pixel.tile_ind]
+        this_pixel = tile.pixels[pixel.h, pixel.w]
+
+        # These are indices within the fs?m image.
+        h_fsm = tile.h_range[pixel.h] - fsm_vec[b].h_lower + 1
+        w_fsm = tile.w_range[pixel.w] - fsm_vec[b].w_lower + 1
+
+        fft_image[h_fsm, w_fsm] *= tile.iota_vec[pixel.w]
+    end
+end
 matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
-# matshow(fft_image); title("fs0m image"); colorbar(); plot_loc()
-# matshow(psf_image_vec[b]); plot(25, 25, "ro"); title("PSF")
 
 # Display rendered image
 rendered_image = render_source(ea, s, sub_image, false);

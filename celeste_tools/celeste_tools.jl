@@ -90,8 +90,8 @@ end
 # TODO: copy over
 using SensitiveFloats.zero_sensitive_float_array
 using SensitiveFloats.SensitiveFloat
-using PSFConvolution.FSMSensitiveFloatMatrices
-using PSFConvolution.initialize_fsm_sf_matrices!
+# using PSFConvolution.FSMSensitiveFloatMatrices
+# using PSFConvolution.initialize_fsm_sf_matrices!
 
 using Celeste.DeterministicVI.ElboArgs
 using Celeste.DeterministicVI.ElboIntermediateVariables
@@ -100,8 +100,8 @@ using DeterministicVI.GalaxyCacheComponent
 using DeterministicVI.load_bvn_mixtures
 using DeterministicVI.load_source_brightnesses
 using Celeste.Model.populate_fsm!
-using PSFConvolution.FSMSensitiveFloatMatrices
-using PSFConvolution.accumulate_band_in_elbo!
+# using PSFConvolution.FSMSensitiveFloatMatrices
+# using PSFConvolution.accumulate_band_in_elbo!
 
 
 function elbo_likelihood_with_fft!(
@@ -130,12 +130,13 @@ end
 
 using StaticArrays
 
-using PSFConvolution.populate_fsm_image!
-using PSFConvolution.populate_source_band_brightness!
+# using PSFConvolution.populate_fsm_image!
+# using PSFConvolution.populate_source_band_brightness!
 
 function populate_fsm_vec!(
     ea::ElboArgs, elbo_vars::ElboIntermediateVariables,
     fsm_vec::Array{FSMSensitiveFloatMatrices})
+
 
     sbs = load_source_brightnesses(ea,
         calculate_derivs=elbo_vars.calculate_derivs,
@@ -149,6 +150,8 @@ function populate_fsm_vec!(
                 calculate_derivs=elbo_vars.calculate_derivs,
                 calculate_hessian=elbo_vars.calculate_hessian)
         for s in 1:ea.S
+            clear_brightness!(fsm_vec[b])
+            clear_fsms!(fsm_vec[b])
             populate_fsm_image!(
                 ea, elbo_vars, s, b, star_mcs_vec[b], gal_mcs_vec[b], fsm_vec[b])
             populate_source_band_brightness!(ea, elbo_vars, s, b, fsm_vec[b], sbs[s])
