@@ -107,9 +107,8 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
             if lh_v != 0
                 clear!(kernel_h)
                 kernel_h.v[1] = lh_v
-                # kernel_h.d[param_ids.u[1]] = -1 * lh_d;
-                # kernel_h.h[param_ids.u[1], param_ids.u[1]] = -1 * lh_h;
                 # This is -1 * wcs_jacobian' * [lh_d, 0]
+                # and -1 * wcs_jacobian' * [lh_h 0; 0 0] * wcs_jacobian
                 kernel_h.d[param_ids.u] = -1 * k_h_grad * lh_d
                 kernel_h.h[param_ids.u, param_ids.u] = -1 * k_h_hess * lh_h;
                 w_lower = max(w_ind0 - a_int + 1, 1)
@@ -120,8 +119,8 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
                     if lw_v != 0
                         clear!(kernel)
                         kernel.v[1] = lw_v
-                        # kernel.d[param_ids.u[2]] = -1 * lw_d;
-                        # kernel.h[param_ids.u[2], param_ids.u[2]] = -1 * lw_h;
+                        # This is -1 * wcs_jacobian' * [0, lw_d]
+                        # and -1 * wcs_jacobian' * [0 0; 0 lw_h] * wcs_jacobian
                         kernel.d[param_ids.u] = -1 * k_w_grad * lw_d;
                         kernel.h[param_ids.u, param_ids.u] = -1 * k_w_hess * lw_h;
                         multiply_sfs!(kernel, kernel_h, calculate_hessian)

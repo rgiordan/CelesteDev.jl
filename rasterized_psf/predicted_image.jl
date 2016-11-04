@@ -144,15 +144,14 @@ Convolve a populated set of SensitiveFloat matrices in fsms with the PSF
 and store them in the matching fs*m_conv SensitiveFloat matrices.
 """
 function convolve_fs1m_image!(fsms::FSMSensitiveFloatMatrices)
-
-    for h in 1:size(fsms.fs0m_image, 1), w in 1:size(fsms.fs0m_image, 2)
+    for h in 1:size(fsms.fs1m_image, 1), w in 1:size(fsms.fs1m_image, 2)
         fsms.fs1m_image_padded[h, w] = fsms.fs1m_image[h, w];
     end
 
     convolve_sensitive_float_matrix!(
         fsms.fs1m_image_padded, fsms.psf_fft, fsms.fs1m_conv_padded);
 
-    for h in 1:size(fsms.fs0m_image, 1), w in 1:size(fsms.fs0m_image, 2)
+    for h in 1:size(fsms.fs1m_image, 1), w in 1:size(fsms.fs1m_image, 2)
         fsms.fs1m_conv[h, w] =
             fsms.fs1m_conv_padded[fsms.pad_pix_h + h, fsms.pad_pix_w + w];
     end
@@ -178,24 +177,25 @@ end
 
 
 """
-Populate the fsm shape matrices and convolve with the PSF for a given
+Populate the fs1m shape matrices and convolve with the PSF for a given
 source and band.  Assumes that fsms.psf_fft has already been set.
 
-The result is the sources shapes, convolved with the PSF, stored in
-fsms.fs0m_conv and fsms.fs1m_conv.
+The result is the sources shapes, convolved with the PSF, stored in fsms.fs1m_conv.
 
 TODO: pass in derivative flags
 """
-function populate_fsm_image!(
+function populate_gal_fsm_image!(
             ea::ElboArgs{Float64},
             elbo_vars::ElboIntermediateVariables{Float64},
             s::Int,
             b::Int,
-            star_mcs::Array{BvnComponent{Float64}, 2},
             gal_mcs::Array{GalaxyCacheComponent{Float64}, 4},
             fsms::FSMSensitiveFloatMatrices)
 
-    clear_fsms!(fsms)
+    for sf in fsms.fs1m_image clear!(sf) end
+    for sf in fsms.fs1m_image_padded clear!(sf) end
+    for sf in fsms.fs1m_conv clear!(sf) end
+    for sf in fsms.fs1m_conv_padded clear!(sf) end
     for pixel in ea.active_pixels
         tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
         if pixel.n == b && s in tile_sources
@@ -209,10 +209,40 @@ function populate_fsm_image!(
                               true, true,
                               s, x, true, Inf,
                               ea.patches[s, b].wcs_jacobian,
-                              star_mcs)
+                              gal_mcs)
         end
     end
     convolve_fsm_images!(fsms);
+end
+
+
+"""
+Populate the fs1m shape matrices and convolve with the PSF for a given
+source and band.  Assumes that fsms.psf_fft has already been set.
+
+The result is the sources shapes, convolved with the PSF, stored in fsms.fs1m_conv.
+
+TODO: pass in derivative flags
+"""
+function populate_star_fsm_image!(
+            ea::ElboArgs{Float64},
+            elbo_vars::ElboIntermediateVariables{Float64},
+            s::Int,
+            b::Int,
+            psf_image::Matrix{Float64},
+            fsms::FSMSensitiveFloatMatrices,
+            lanczos_width::Int64)
+
+    for sf in fsms.fs0m_conv clear!(sf) end
+
+    # The pixel location of the star.
+    star_loc_pix =
+        Model.linear_world_to_pix(ea.patches[s, b].wcs_jacobian,
+                                  ea.patches[s, b].center,
+                                  ea.patches[s, b].pixel_center,
+                                  ea.vp[s][lidx.u])
+    lanczos_interpolate!(fsms.fs1m_conv, psf_image, star_loc_pix, lanczos_width,
+                         ea.patches[s, b].wcs_jacobian, true);
 end
 
 
