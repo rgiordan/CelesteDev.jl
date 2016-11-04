@@ -74,6 +74,39 @@ psf_image_vec =
 
 
 
+# star_loc is h, w
+star_loc = Float64[25.5, 30.5]
+psf_image = psf_image_vec[3];
+star_image = fill(0.0, 60, 60);
+lanczos_interpolate!(star_image, psf_image, star_loc, 3.0)
+
+matshow(star_image)
+plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
+
+
+star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
+
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
+star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
+lanczos_interpolate!(star_sf_image, psf_image, star_loc, 3.0, true)
+matshow([ sf.v[1] for sf in star_sf_image])
+plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
+
+
+sinc_with_derivatives(2.5)
+sinc(2.5)
+
+
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
+lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(2.5, 3.0)
+
+x = 2.5
+a = 3.0
+sinc_x, sinc_x_d, sinc_x_h = sinc_with_derivatives(x)
+sinc_xa, sinc_xa_d, sinc_xa_h = sinc_with_derivatives(x / a)
+lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(x, a)
+lanczos_kernel(x, a)
+
 
 
 ################################

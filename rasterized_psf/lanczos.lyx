@@ -170,9 +170,9 @@ The derivatives pass through the Lanczos kernel.
 \begin{align*}
 L\left(x;a\right) & =\sinc\left(x\right)\sinc\left(\frac{x}{a}\right)\mathbb{I}\left(\left|x\right|<a\right)\\
  & =\frac{\sin x}{x}\frac{\sin\left(\frac{x}{a}\right)}{\frac{x}{a}}\mathbb{I}\left(\left|x\right|<a\right)\\
-\sinc'\left(x\right)=\frac{d\sinc\left(x\right)}{dx} & =\frac{\cos x}{x}-\frac{\sin x}{x^{2}}=\frac{x\cos x-\sin x}{x^{2}}\\
-\sinc''\left(x\right)=\frac{d^{2}\sinc\left(x\right)}{dx^{2}} & =\frac{x\sin x+\cos x-\cos x}{x^{2}}-2\frac{x\cos x-\sin x}{x^{3}}\\
- & =\frac{x^{2}\sin x-2x\cos x+2\sin x}{x^{3}}\\
+\sinc'\left(x\right)=\frac{d\sinc\left(x\right)}{dx} & =\frac{\cos x}{x}-\frac{\sin x}{x^{2}}=\frac{x\cos x-\sin x}{x^{2}}=\frac{\cos x-\sinc x}{x}\\
+\sinc''\left(x\right)=\frac{d^{2}\sinc\left(x\right)}{dx^{2}} & =\frac{\sin x-\sinc'x}{x}-\frac{\sinc'\left(x\right)}{x}\\
+ & =\sinc x-2\frac{\sinc'\left(x\right)}{x}\\
 \frac{dL\left(x;a\right)}{dx} & =\left(\sinc'\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc\left(x\right)\sinc'\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
 \frac{d^{2}L\left(x;a\right)}{dx^{2}} & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
  & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{2}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)
