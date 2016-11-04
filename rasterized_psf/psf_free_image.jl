@@ -12,6 +12,8 @@ include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/celeste_tools/celeste_tools.jl")
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
+
 
 # using PSFConvolution
 
