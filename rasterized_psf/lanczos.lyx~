@@ -1,0 +1,199 @@
+#LyX 2.2 created this file. For more info see http://www.lyx.org/
+\lyxformat 508
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\use_default_options true
+\maintain_unincluded_children false
+\language english
+\language_package default
+\inputencoding auto
+\fontencoding global
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\paperfontsize default
+\use_hyperref false
+\papersize default
+\use_geometry false
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\quotes_language english
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\end_header
+
+\begin_body
+
+\begin_layout Standard
+\begin_inset FormulaMacro
+\newcommand{\sinc}{\textrm{sinc}}
+{\textrm{sinc}}
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The Lanczos interpolation of the PSF involves three coordinate systems.
+ One is the pixel space of the original image, which I will denote without
+ subscripts: 
+\begin_inset Formula $\left(h,w\right)$
+\end_inset
+
+.
+ The second is the pixels of the PSF image itself, which I will denote with
+ a subscript 
+\begin_inset Formula $\left(h,w\right)_{psf}$
+\end_inset
+
+.
+ Finally, there is the coordinate system centered at the star, 
+\begin_inset Formula $\left(h,w\right)_{star}$
+\end_inset
+
+.
+ The three coordinate systems have the same scale, but are related by offsets.
+ Let the star be located at 
+\begin_inset Formula $\left(\mu_{h},\mu_{w}\right)$
+\end_inset
+
+ (no subscript indicates in the original image).
+ Let the center of the PSF in its image be at 
+\begin_inset Formula $\left(h_{0},w_{0}\right)_{psf}$
+\end_inset
+
+ (that is an index into the PSF image).
+ Then
+\begin_inset Formula 
+\begin{align*}
+\left(h,w\right) & =\left(h-\mu_{h},w-\mu_{w}\right)_{star}\\
+\left(h,w\right)_{star} & =\left(h+h_{0},w+w_{0}\right)_{psf}\\
+\left(h,w\right) & =\left(h-\mu_{h}+h_{0},w-\mu_{w}+w_{0}\right)_{psf}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Let 
+\begin_inset Formula $L$
+\end_inset
+
+ denote a Lanczos kernel with width 
+\begin_inset Formula $a$
+\end_inset
+
+.
+ We have samples of the PSF at integer locations in the coordinates 
+\begin_inset Formula $\left(\cdot\right)_{psf}$
+\end_inset
+
+.
+ The integer pixel locations in 
+\begin_inset Formula $\left(\cdot\right)$
+\end_inset
+
+ are non-integer locations in 
+\begin_inset Formula $\left(\cdot\right)_{psf}$
+\end_inset
+
+.
+ Then the pixel value at 
+\begin_inset Formula $\left(h,w\right)$
+\end_inset
+
+ is given by
+\begin_inset Formula 
+\begin{align*}
+\bar{h} & =\left\lfloor h-\mu_{h}+h_{0}\right\rfloor \\
+\bar{w} & =\left\lfloor w-\mu_{w}+w_{0}\right\rfloor \\
+p\left(h,w\right) & =\sum_{h_{psf}=\bar{h}-a+1}^{\bar{h}+a}\sum_{w_{psf}=\bar{w}-a+1}^{\bar{w}+a}PSF\left(h_{psf},w_{psf}\right)L\left(h-\mu_{h}+h_{0}-h_{psf}\right)L\left(w-\mu_{w}+w_{0}-w_{psf}\right)
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The derivatives pass through the Lanczos kernel.
+ Since
+\begin_inset Formula 
+\begin{align*}
+L\left(x;a\right) & =\sinc\left(x\right)\sinc\left(\frac{x}{a}\right)\mathbb{I}\left(\left|x\right|<a\right)\\
+ & =\frac{\sin x}{x}\frac{\sin\left(\frac{x}{a}\right)}{\frac{x}{a}}\mathbb{I}\left(\left|x\right|<a\right)\\
+\sinc'\left(x\right)=\frac{d\sinc\left(x\right)}{dx} & =\frac{\cos x}{x}-\frac{\sin x}{x^{2}}=\frac{x\cos x-\sin x}{x^{2}}\\
+\sinc''\left(x\right)=\frac{d^{2}\sinc\left(x\right)}{dx^{2}} & =\frac{x\sin x+\cos x-\cos x}{x^{2}}-2\frac{x\cos x-\sin x}{x^{3}}\\
+ & =\frac{x^{2}\sin x-2x\cos x+2\sin x}{x^{3}}\\
+\frac{dL\left(x;a\right)}{dx} & =\left(\sinc'\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc\left(x\right)\sinc'\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
+\frac{d^{2}L\left(x;a\right)}{dx^{2}} & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
+ & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{2}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+With these in hand you can easily calculate 
+\begin_inset Formula 
+\begin{align*}
+\frac{dp}{d\mu} & \textrm{ and }\frac{d^{2}p}{d\mu d\mu^{T}}\\
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\end_body
+\end_document

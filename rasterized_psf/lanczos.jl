@@ -6,7 +6,6 @@ function lanczos_kernel{NumType <: Number}(x::NumType, a::Float64)
 end
 
 
-
 # Interpolate the PSF to the pixel values.
 function lanczos_interpolate!{NumType <: Number}(
         image::Matrix{NumType}, psf_image::Matrix{Float64},
