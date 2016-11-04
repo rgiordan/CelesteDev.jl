@@ -173,9 +173,6 @@ L\left(x;a\right) & =\sinc\left(x\right)\sinc\left(\frac{x}{a}\right)\mathbb{I}\
 \sinc'\left(x\right)=\frac{d\sinc\left(x\right)}{dx} & =\frac{\cos x}{x}-\frac{\sin x}{x^{2}}=\frac{x\cos x-\sin x}{x^{2}}=\frac{\cos x-\sinc x}{x}\\
 \sinc''\left(x\right)=\frac{d^{2}\sinc\left(x\right)}{dx^{2}} & =\frac{\sin x-\sinc'x}{x}-\frac{\sinc'\left(x\right)}{x}\\
  & =\sinc x-2\frac{\sinc'\left(x\right)}{x}\\
- & \frac{x\sin x+\cos x-\cos x}{x^{2}}-2\frac{x\cos x-\sin x}{x^{3}}\\
- & =\frac{x^{2}\sin x-2x\cos x+2\sin x}{x^{3}}\\
- & =\sinc x-2\left(\frac{\cos x-\sinc x}{x^{2}}\right)\\
 \frac{dL\left(x;a\right)}{dx} & =\left(\sinc'\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc\left(x\right)\sinc'\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
 \frac{d^{2}L\left(x;a\right)}{dx^{2}} & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
  & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{2}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)
@@ -191,6 +188,96 @@ With these in hand you can easily calculate
 \begin_inset Formula 
 \begin{align*}
 \frac{dp}{d\mu} & \textrm{ and }\frac{d^{2}p}{d\mu d\mu^{T}}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Note that the pixel location 
+\begin_inset Formula $\mu$
+\end_inset
+
+ and actual world location 
+\begin_inset Formula $\mu_{RD}$
+\end_inset
+
+ (RD is for RA-DEC) are related by the Jacobian of the WCS transform:
+\begin_inset Formula 
+\begin{align*}
+\frac{d\mu}{d\mu_{RD}^{T}} & =J_{WCS}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+so
+\begin_inset Formula 
+\begin{align*}
+\frac{dp}{d\mu_{RD}} & =J_{WCS}^{T}\frac{dp}{d\mu}\\
+\frac{d^{2}p}{d\mu_{RD}d\mu_{RD}^{T}} & J_{WCS}^{T}\frac{d^{2}p}{d\mu d\mu}J_{WCS}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Note that
+\begin_inset Formula 
+\begin{align*}
+J_{WCS}^{T}\left[\begin{array}{c}
+z\\
+0
+\end{array}\right] & =\left[\begin{array}{cc}
+J_{11} & J_{21}\\
+J_{12} & J_{22}
+\end{array}\right]\left[\begin{array}{c}
+z\\
+0
+\end{array}\right]=z\left[\begin{array}{c}
+J_{11}\\
+J_{12}
+\end{array}\right]\\
+J_{WCS}^{T}\left[\begin{array}{c}
+0\\
+z
+\end{array}\right] & =\left[\begin{array}{c}
+J_{21}z\\
+J_{22}z
+\end{array}\right]\\
+J_{WCS}^{T}\left[\begin{array}{cc}
+z & 0\\
+0 & 0
+\end{array}\right]J_{WCS} & =\left[\begin{array}{cc}
+J_{11} & J_{21}\\
+J_{12} & J_{22}
+\end{array}\right]\left[\begin{array}{cc}
+zJ_{11} & zJ_{12}\\
+0 & 0
+\end{array}\right]=z\left[\begin{array}{cc}
+J_{11}^{2} & J_{11}J_{12}\\
+J_{11}J_{12} & J_{12}^{2}
+\end{array}\right]\\
+J_{WCS}^{T}\left[\begin{array}{cc}
+0 & 0\\
+0 & z
+\end{array}\right]J_{WCS} & =\left[\begin{array}{cc}
+J_{11} & J_{21}\\
+J_{12} & J_{22}
+\end{array}\right]\left[\begin{array}{cc}
+0 & 0\\
+zJ_{21} & zJ_{22}
+\end{array}\right]=z\left[\begin{array}{cc}
+J_{21}^{2} & J_{22}J_{21}\\
+J_{22}J_{21} & J_{22}^{2}
+\end{array}\right]
 \end{align*}
 
 \end_inset

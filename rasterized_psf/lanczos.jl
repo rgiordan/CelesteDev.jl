@@ -70,6 +70,7 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
         psf_image::Matrix{Float64},
         object_loc::Vector{NumType},
         a::Float64,
+        wcs_jacobian::Matrix{Float64},
         calculate_hessian::Bool)
 
     a_int = Int(a)
@@ -78,17 +79,16 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
 
     param_ids = getids(ParamType)
 
-    # Floats sensitive to object_loc
-    h_sf = zero_sensitive_float(ParamType, NumType, 1)
-    h_sf.v[1] = object_loc[1]
-    h_sf.d[param_ids.u[1]] = 1
-
-    w_sf = zero_sensitive_float(ParamType, NumType, 1)
-    w_sf.v[1] = object_loc[2]
-    w_sf.d[param_ids.u[2]] = 1
-
+    # These are sensitive floats representing derviatives of the Lanczos kernel.
     kernel = zero_sensitive_float(ParamType, NumType, 1)
     kernel_h = zero_sensitive_float(ParamType, NumType, 1)
+
+    # Pre-compute terms for transforming derivatives to world coordinates.
+    k_h_grad = wcs_jacobian' * Float64[1, 0]
+    k_h_hess = wcs_jacobian' * Float64[1 0; 0 0] * wcs_jacobian
+
+    k_w_grad = wcs_jacobian' * Float64[0, 1]
+    k_w_hess = wcs_jacobian' * Float64[0 0; 0 1] * wcs_jacobian
 
     # h, w are pixel coordinates.
     for h = 1:size(star_image, 1), w = 1:size(star_image, 2)
@@ -102,23 +102,28 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
         h_ind0, w_ind0 = Int(floor(h_psf)), Int(floor(w_psf))
         h_lower = max(h_ind0 - a_int + 1, 1)
         h_upper = min(h_ind0 + a_int, size(psf_image, 1))
-        for h_ind = h_lower:h_upper
+        for h_ind = (h_lower:h_upper)
             lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(h_psf - h_ind, a)
             if lh_v != 0
                 clear!(kernel_h)
                 kernel_h.v[1] = lh_v
-                kernel_h.d[param_ids.u[1]] = -1 * lh_d;
-                kernel_h.h[param_ids.u[1], param_ids.u[1]] = -1 * lh_h;
+                # kernel_h.d[param_ids.u[1]] = -1 * lh_d;
+                # kernel_h.h[param_ids.u[1], param_ids.u[1]] = -1 * lh_h;
+                # This is -1 * wcs_jacobian' * [lh_d, 0]
+                kernel_h.d[param_ids.u] = -1 * k_h_grad * lh_d
+                kernel_h.h[param_ids.u, param_ids.u] = -1 * k_h_hess * lh_h;
                 w_lower = max(w_ind0 - a_int + 1, 1)
                 w_upper = min(w_ind0 + a_int, size(psf_image, 2))
-                for w_ind = w_lower:w_upper
+                for w_ind = (w_lower:w_upper)
                     lw_v, lw_d, lw_h =
                         lanczos_kernel_with_derivatives(w_psf - w_ind, a)
                     if lw_v != 0
                         clear!(kernel)
                         kernel.v[1] = lw_v
-                        kernel.d[param_ids.u[2]] = -1 * lw_d;
-                        kernel.h[param_ids.u[2], param_ids.u[2]] = -1 * lw_h;
+                        # kernel.d[param_ids.u[2]] = -1 * lw_d;
+                        # kernel.h[param_ids.u[2], param_ids.u[2]] = -1 * lw_h;
+                        kernel.d[param_ids.u] = -1 * k_w_grad * lw_d;
+                        kernel.h[param_ids.u, param_ids.u] = -1 * k_w_hess * lw_h;
                         multiply_sfs!(kernel, kernel_h, calculate_hessian)
                         add_scaled_sfs!(
                             image[h, w], kernel, psf_image[h_ind, w_ind],

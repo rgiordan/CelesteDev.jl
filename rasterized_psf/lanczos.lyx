@@ -195,5 +195,95 @@ With these in hand you can easily calculate
 
 \end_layout
 
+\begin_layout Standard
+Note that the pixel location 
+\begin_inset Formula $\mu$
+\end_inset
+
+ and actual world location 
+\begin_inset Formula $\mu_{RD}$
+\end_inset
+
+ (RD is for RA-DEC) are related by the Jacobian of the WCS transform:
+\begin_inset Formula 
+\begin{align*}
+\frac{d\mu}{d\mu_{RD}^{T}} & =J_{WCS}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+so
+\begin_inset Formula 
+\begin{align*}
+\frac{dp}{d\mu_{RD}} & =J_{WCS}^{T}\frac{dp}{d\mu}\\
+\frac{d^{2}p}{d\mu_{RD}d\mu_{RD}^{T}} & J_{WCS}^{T}\frac{d^{2}p}{d\mu d\mu}J_{WCS}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Note that
+\begin_inset Formula 
+\begin{align*}
+J_{WCS}^{T}\left[\begin{array}{c}
+z\\
+0
+\end{array}\right] & =\left[\begin{array}{cc}
+J_{11} & J_{21}\\
+J_{12} & J_{22}
+\end{array}\right]\left[\begin{array}{c}
+z\\
+0
+\end{array}\right]=z\left[\begin{array}{c}
+J_{11}\\
+J_{12}
+\end{array}\right]\\
+J_{WCS}^{T}\left[\begin{array}{c}
+0\\
+z
+\end{array}\right] & =z\left[\begin{array}{c}
+J_{21}\\
+J_{22}
+\end{array}\right]\\
+J_{WCS}^{T}\left[\begin{array}{cc}
+z & 0\\
+0 & 0
+\end{array}\right]J_{WCS} & =\left[\begin{array}{cc}
+J_{11} & J_{21}\\
+J_{12} & J_{22}
+\end{array}\right]\left[\begin{array}{cc}
+zJ_{11} & zJ_{12}\\
+0 & 0
+\end{array}\right]=z\left[\begin{array}{cc}
+J_{11}^{2} & J_{11}J_{12}\\
+J_{11}J_{12} & J_{12}^{2}
+\end{array}\right]\\
+J_{WCS}^{T}\left[\begin{array}{cc}
+0 & 0\\
+0 & z
+\end{array}\right]J_{WCS} & =\left[\begin{array}{cc}
+J_{11} & J_{21}\\
+J_{12} & J_{22}
+\end{array}\right]\left[\begin{array}{cc}
+0 & 0\\
+zJ_{21} & zJ_{22}
+\end{array}\right]=z\left[\begin{array}{cc}
+J_{21}^{2} & J_{22}J_{21}\\
+J_{22}J_{21} & J_{22}^{2}
+\end{array}\right]
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
 \end_body
 \end_document

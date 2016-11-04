@@ -68,19 +68,23 @@ current_elbo_time = time() - current_elbo_time
 
 ##############
 
+b = 3
+
 # Get the actual PSF images using the /first/ source.
 psf_image_vec =
     Matrix{Float64}[ PSF.get_psf_at_point(ea.patches[1, b].psf) for b in 1:ea.N ];
 
 star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
+wcs_jacobian = ea.patches[1, b].wcs_jacobian
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
 star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
-lanczos_interpolate!(star_sf_image, psf_image, star_loc, 3.0, true)
+lanczos_interpolate!(star_sf_image, psf_image, star_loc, 3.0, wcs_jacobian, true)
 matshow([ sf.v[1] for sf in star_sf_image])
 plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
 
-matshow([ sf.d[star_ids.u[1], 1] for sf in star_sf_image])
+# matshow([ sf.d[star_ids.u[1], 1] for sf in star_sf_image])
+matshow([ sf.h[star_ids.u[1], star_ids.u[1]] for sf in star_sf_image])
 plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
 
 
