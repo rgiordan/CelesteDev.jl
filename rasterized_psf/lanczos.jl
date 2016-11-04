@@ -100,23 +100,29 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
 
         # Centers of indices of the psf matrix, i.e., integer psf coordinates.
         h_ind0, w_ind0 = Int(floor(h_psf)), Int(floor(w_psf))
-        for h_ind = max(h_ind0 - a_int + 1, 1):min(h_ind0 + a_int, size(psf_image, 1))
+        h_lower = max(h_ind0 - a_int + 1, 1)
+        h_upper = min(h_ind0 + a_int, size(psf_image, 1))
+        for h_ind = h_lower:h_upper
             lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(h_psf - h_ind, a)
             if lh_v != 0
                 clear!(kernel_h)
                 kernel_h.v[1] = lh_v
                 kernel_h.d[param_ids.u[1]] = -1 * lh_d;
                 kernel_h.h[param_ids.u[1], param_ids.u[1]] = -1 * lh_h;
-                for w_ind = max(w_ind0 - a_int + 1, 1):min(w_ind0 + a_int, size(psf_image, 2))
-                    lw_v, lw_d, lw_h = lanczos_kernel_with_derivatives(w_psf - w_ind, a)
+                w_lower = max(w_ind0 - a_int + 1, 1)
+                w_upper = min(w_ind0 + a_int, size(psf_image, 2))
+                for w_ind = w_lower:w_upper
+                    lw_v, lw_d, lw_h =
+                        lanczos_kernel_with_derivatives(w_psf - w_ind, a)
                     if lw_v != 0
                         clear!(kernel)
                         kernel.v[1] = lw_v
                         kernel.d[param_ids.u[2]] = -1 * lw_d;
                         kernel.h[param_ids.u[2], param_ids.u[2]] = -1 * lw_h;
                         multiply_sfs!(kernel, kernel_h, calculate_hessian)
-                        add_scaled_sfs!(image[h, w], kernel, psf_image[h_ind, w_ind],
-                                        calculate_hessian)
+                        add_scaled_sfs!(
+                            image[h, w], kernel, psf_image[h_ind, w_ind],
+                            calculate_hessian)
                     end
                 end
             end
@@ -124,6 +130,91 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
     end
 end
 
+
+import Celeste.Model.GalaxyCacheComponent
+
+# Get a GalaxyCacheComponent with no PSF
+function GalaxyCacheComponent{NumType <: Number}(
+    e_dev_dir::Float64, e_dev_i::NumType,
+    gc::GalaxyComponent, u::Vector{NumType},
+    e_axis::NumType, e_angle::NumType, e_scale::NumType,
+    calculate_derivs::Bool, calculate_hessian::Bool)
+
+    # Declare in advance to save memory allocation.
+    const empty_sig_sf =
+    GalaxySigmaDerivs(Array(NumType, 0, 0), Array(NumType, 0, 0, 0))
+
+    XiXi = get_bvn_cov(e_axis, e_angle, e_scale)
+    var_s = gc.nuBar * XiXi
+
+    # d siginv / dsigma is only necessary for the Hessian.
+    bmc = BvnComponent{NumType}(
+        SVector{2, NumType}(u), var_s, gc.etaBar,
+        calculate_siginv_deriv=calculate_derivs && calculate_hessian)
+
+    if calculate_derivs
+        sig_sf = GalaxySigmaDerivs(
+            e_angle, e_axis, e_scale, XiXi, calculate_tensor=calculate_hessian)
+        sig_sf.j .*= gc.nuBar
+        if calculate_hessian
+            # The tensor is only needed for the Hessian.
+            sig_sf.t .*= gc.nuBar
+        end
+    else
+        sig_sf = empty_sig_sf
+    end
+
+    GalaxyCacheComponent(e_dev_dir, e_dev_i, bmc, sig_sf)
+end
+
+
+import Celeste.Model.lidx
+import Celeste.Model.GalaxySigmaDerivs
+import Celeste.Model.get_bvn_cov
+import Celeste.Model.galaxy_prototypes
+
+"""
+No PSF.
+"""
+function load_gal_bvn_mixtures{NumType <: Number}(
+                    S::Int64,
+                    patches::Matrix{SkyPatch},
+                    source_params::Vector{Vector{NumType}},
+                    active_sources::Vector{Int},
+                    b::Int;
+                    calculate_derivs::Bool=true,
+                    calculate_hessian::Bool=true)
+
+    # To maintain consistency with the rest of the code, use a 4d
+    # array.  The first dimension was previously the PSF component.
+    gal_mcs = Array(GalaxyCacheComponent{NumType}, 1, 8, 2, S)
+
+    # TODO: do not keep any derviative information if the sources are not in
+    # active_sources.
+    for s in 1:S
+        sp  = source_params[s]
+        world_loc = sp[lidx.u]
+        m_pos = Model.linear_world_to_pix(patches[s, b].wcs_jacobian,
+                                          patches[s, b].center,
+                                          patches[s, b].pixel_center, world_loc)
+
+        for i = 1:2 # i indexes dev vs exp galaxy types.
+            e_dev_dir = (i == 1) ? 1. : -1.
+            e_dev_i = (i == 1) ? sp[lidx.e_dev] : 1. - sp[lidx.e_dev]
+
+            # Galaxies of type 1 have 8 components, and type 2 have 6 components.
+            for j in 1:[8,6][i]
+                gal_mcs[1, j, i, s] = GalaxyCacheComponent(
+                    e_dev_dir, e_dev_i, galaxy_prototypes[i][j], m_pos,
+                    sp[lidx.e_axis], sp[lidx.e_angle], sp[lidx.e_scale],
+                    calculate_derivs && (s in active_sources),
+                    calculate_hessian)
+            end
+        end
+    end
+
+    gal_mcs
+end
 
 
 #############

@@ -72,24 +72,15 @@ current_elbo_time = time() - current_elbo_time
 psf_image_vec =
     Matrix{Float64}[ PSF.get_psf_at_point(ea.patches[1, b].psf) for b in 1:ea.N ];
 
-
-
-# star_loc is h, w
-star_loc = Float64[25.5, 30.5]
-psf_image = psf_image_vec[3];
-star_image = fill(0.0, 60, 60);
-lanczos_interpolate!(star_image, psf_image, star_loc, 3.0)
-
-matshow(star_image)
-plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
-
-
 star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
 star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
 lanczos_interpolate!(star_sf_image, psf_image, star_loc, 3.0, true)
 matshow([ sf.v[1] for sf in star_sf_image])
+plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
+
+matshow([ sf.d[star_ids.u[1], 1] for sf in star_sf_image])
 plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
 
 
@@ -107,6 +98,15 @@ sinc_xa, sinc_xa_d, sinc_xa_h = sinc_with_derivatives(x / a)
 lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(x, a)
 lanczos_kernel(x, a)
 
+
+
+b = 3
+
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
+gal_mcs = load_gal_bvn_mixtures(
+        ea.S, ea.patches, ea.vp, ea.active_sources, b,
+        calculate_derivs=true,
+        calculate_hessian=true);
 
 
 ################################
