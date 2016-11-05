@@ -10,12 +10,13 @@ include(joinpath(Pkg.dir("Celeste"), "test", "Synthetic.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/celeste_tools/celeste_tools.jl")
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+include("celeste_tools/celeste_tools.jl")
+const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 
-# using PSFConvolution
+# include(joinpath(dir, "rasterized_psf/lanczos.jl"))
+include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
 
+using ELBOPixelatedPSF
 
 import Synthetic
 using SampleData
@@ -55,7 +56,7 @@ vp = Vector{Float64}[init_source(ce) for ce in cat_local];
 patches, tile_source_map = Infer.get_tile_source_map(tiled_images, cat_local);
 ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [1]; psf_K=2);
 Infer.fit_object_psfs!(ea, ea.active_sources);
-load_active_pixels!(ea, false);
+Celeste.Infer.load_active_pixels!(ea, false);
 length(ea.active_pixels)
 
 # For compiling
@@ -74,29 +75,19 @@ import Celeste.Model.SkyPatch
 
 ea_fft = ElboArgs(tiled_images, deepcopy(vp), tile_source_map,
                   deepcopy(patches), [1]; psf_K=1);
-load_active_pixels!(ea_fft, false);
+Celeste.Infer.load_active_pixels!(ea_fft, false);
 
 psf_image_mat = Matrix{Float64}[
     PSF.get_psf_at_point(ea.patches[s, b].psf) for s in 1:ea.S, b in 1:ea.N];
 
-# Then set the fft ea "psf" to a small width to interpolate the pixelated PSF.
-point_psf_width = 0.5;
-point_psf = Model.PsfComponent(1.0, SVector{2,Float64}([0, 0]),
-    SMatrix{2, 2, Float64, 4}([ point_psf_width 0.0; 0.0 point_psf_width ]));
-for s in 1:size(ea_fft.patches)[1], b in 1:size(ea_fft.patches)[2]
-    ea_fft.patches[s, b] = SkyPatch(ea_fft.patches[s, b], Model.PsfComponent[ point_psf ]);
-end
-
 elbo_vars_fft = DeterministicVI.ElboIntermediateVariables(
     Float64, ea_fft.S, length(ea_fft.active_sources));
 
-fsm_vec = FSMSensitiveFloatMatrices[FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
-initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
+fsm_vec = ELBOPixelatedPSF.FSMSensitiveFloatMatrices[
+    ELBOPixelatedPSF.FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
+ELBOPixelatedPSF.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
 
 # For compilation
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
-
 function elbo_fft_opt{NumType <: Number}(
                     ea::ElboArgs{NumType};
                     calculate_derivs=true,
@@ -104,7 +95,7 @@ function elbo_fft_opt{NumType <: Number}(
     elbo_vars_fft = DeterministicVI.ElboIntermediateVariables(
         Float64, ea.S, length(ea.active_sources));
     @assert ea.psf_K == 1
-    elbo_likelihood_with_fft!(ea, elbo_vars_fft, 1, fsm_vec);
+    ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, elbo_vars_fft, 1, fsm_vec);
     DeterministicVI.subtract_kl!(ea, elbo, calculate_derivs=calculate_derivs)
     return deepcopy(elbo_vars_fft.elbo)
 end

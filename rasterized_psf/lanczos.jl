@@ -185,6 +185,7 @@ import Celeste.Model.lidx
 import Celeste.Model.GalaxySigmaDerivs
 import Celeste.Model.get_bvn_cov
 import Celeste.Model.galaxy_prototypes
+import Celeste.Model.linear_world_to_pix
 
 """
 No PSF.
@@ -207,9 +208,10 @@ function load_gal_bvn_mixtures{NumType <: Number}(
     for s in 1:S
         sp  = source_params[s]
         world_loc = sp[lidx.u]
-        m_pos = Model.linear_world_to_pix(patches[s, b].wcs_jacobian,
-                                          patches[s, b].center,
-                                          patches[s, b].pixel_center, world_loc)
+        m_pos = linear_world_to_pix(
+            patches[s, b].wcs_jacobian,
+            patches[s, b].center,
+            patches[s, b].pixel_center, world_loc)
 
         for i = 1:2 # i indexes dev vs exp galaxy types.
             e_dev_dir = (i == 1) ? 1. : -1.

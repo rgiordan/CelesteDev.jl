@@ -1,32 +1,31 @@
-#module PSFConvolution
+module ELBOPixelatedPSF
 
-using DeterministicVI.load_bvn_mixtures
-using DeterministicVI.load_source_brightnesses
+using DeterministicVI.ElboArgs
 using DeterministicVI.ElboIntermediateVariables
-using DeterministicVI.get_expected_pixel_brightness!
-using Celeste.Model.populate_fsm_vecs!
-using Celeste.Model.populate_gal_fsm!
-using Celeste.Model.populate_fsm!
-using Celeste.Model.ParamSet
-using SensitiveFloats.SensitiveFloat
 using DeterministicVI.BvnComponent
 using DeterministicVI.GalaxyCacheComponent
-
-using SensitiveFloats.zero_sensitive_float
-using SensitiveFloats.zero_sensitive_float_array
-using SensitiveFloats.SensitiveFloat
-using SensitiveFloats.clear!
-
-using DeterministicVI.add_sources_sf!
-using DeterministicVI.add_elbo_log_term!
-using DeterministicVI.add_scaled_sfs!
-using DeterministicVI.ElboArgs
 using DeterministicVI.ActivePixel
 using DeterministicVI.ImageTile
 using DeterministicVI.SourceBrightness
 using DeterministicVI.StarPosParams
 using DeterministicVI.GalaxyPosParams
 using DeterministicVI.CanonicalParams
+using DeterministicVI.GalaxyComponent
+using DeterministicVI.SkyPatch
+
+using Celeste.Model.populate_gal_fsm!
+using Celeste.Model.ParamSet
+using Celeste.Model.linear_world_to_pix
+
+using SensitiveFloats.zero_sensitive_float
+using SensitiveFloats.zero_sensitive_float_array
+using SensitiveFloats.SensitiveFloat
+using SensitiveFloats.clear!
+
+using DeterministicVI.load_source_brightnesses
+using DeterministicVI.add_sources_sf!
+using DeterministicVI.add_elbo_log_term!
+using DeterministicVI.add_scaled_sfs!
 using DeterministicVI.accumulate_source_pixel_brightness!
 
 using StaticArrays
@@ -36,22 +35,9 @@ typealias fs0mMatrix Matrix{SensitiveFloat{StarPosParams, Float64}}
 typealias fs1mMatrix Matrix{SensitiveFloat{GalaxyPosParams, Float64}}
 
 
-# TODO: copy over
-using SensitiveFloats.zero_sensitive_float_array
-using SensitiveFloats.SensitiveFloat
-# using PSFConvolution.FSMSensitiveFloatMatrices
-# using PSFConvolution.initialize_fsm_sf_matrices!
-
-using Celeste.DeterministicVI.ElboArgs
-using Celeste.DeterministicVI.ElboIntermediateVariables
-using DeterministicVI.BvnComponent
-using DeterministicVI.GalaxyCacheComponent
-using DeterministicVI.load_bvn_mixtures
-using DeterministicVI.load_source_brightnesses
-using Celeste.Model.populate_fsm!
-# using PSFConvolution.FSMSensitiveFloatMatrices
-# using PSFConvolution.accumulate_band_in_elbo!
-
+const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
+include(joinpath(dir, "rasterized_psf/sensitive_float_fft.jl"))
+include(joinpath(dir, "rasterized_psf/lanczos.jl"))
 
 type FSMSensitiveFloatMatrices
     # The lower corner of the image (in terms of index values)
@@ -170,11 +156,6 @@ function initialize_fsm_sf_matrices!(
 end
 
 
-########################################
-# New versions of exisitng functions
-
-# using PSFConvolution.populate_fsm_image!
-# using PSFConvolution.populate_source_band_brightness!
 # This is just for debugging.
 function populate_fsm_vec!(
     ea::ElboArgs, elbo_vars::ElboIntermediateVariables,
@@ -201,68 +182,14 @@ function populate_fsm_vec!(
             populate_star_fsm_image!(
                 ea, elbo_vars, s, b, fsm_vec[b].psf_vec[s], fsm_vec[b].fs0m_conv,
                 fsm_vec[b].h_lower, fsm_vec[b].w_lower, lanczos_width)
-            populate_gal_fsm_image!(ea, elbo_vars, s, b, gal_mcs_vec[b], fsm_vec[b])
-            populate_source_band_brightness!(ea, elbo_vars, s, b, fsm_vec[b], sbs[s])
+            populate_gal_fsm_image!(
+                ea, elbo_vars, s, b, gal_mcs_vec[b], fsm_vec[b])
+            populate_source_band_brightness!(
+                ea, elbo_vars, s, b, fsm_vec[b], sbs[s])
         end
     end
 end
 
-
-# just a version of load_active_pixels! that doesn't discard NaN
-using DeterministicVI.ElboArgs
-function load_active_pixels!(ea::ElboArgs{Float64},
-                             discard_nan::Bool;
-                             noise_fraction=0.1,
-                             min_radius_pix=8.0)
-    @assert length(ea.active_sources) == 1
-    s = ea.active_sources[1]
-
-    @assert(length(ea.active_pixels) == 0)
-
-    for n = 1:ea.N
-        tiles = ea.images[n].tiles
-
-        patch = ea.patches[s, n]
-        pix_loc = Model.linear_world_to_pix(patch.wcs_jacobian,
-                                            patch.center,
-                                            patch.pixel_center,
-                                            ea.vp[s][ids.u])
-
-        # TODO: just loop over the tiles/pixels near the active source
-        for t in 1:length(tiles)
-            tile = tiles[t]
-
-            tile_source_map = ea.tile_source_map[n][t]
-            if s in tile_source_map
-                # TODO; use log_prob.jl in the Model module to get the
-                # get the expected brightness, not variational inference
-                pred_tile_pixels =
-                    DeterministicVI.tile_predicted_image(tile, ea, [ s ],
-                                                   include_epsilon=false)
-                for h in tile.h_range, w in tile.w_range
-                    pixel_nan = discard_nan && isnan(tile.pixels[h_im, w_im])
-                    if !pixel_nan
-                        # The pixel location in the rendered image.
-                        h_im = h - minimum(tile.h_range) + 1
-                        w_im = w - minimum(tile.w_range) + 1
-
-                        bright_pixel = pred_tile_pixels[h_im, w_im] >
-                           tile.iota_vec[h_im] * tile.epsilon_mat[h_im, w_im] * noise_fraction
-                        close_pixel =
-                            (h - pix_loc[1]) ^ 2 + (w - pix_loc[2])^2 < min_radius_pix^2
-                        if bright_pixel || close_pixel
-                            push!(ea.active_pixels, ActivePixel(n, t, h_im, w_im))
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
-###################
-
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/sensitive_float_fft.jl")
 
 
 """
@@ -357,7 +284,7 @@ function populate_star_fsm_image!(
     for sf in fs0m_conv clear!(sf) end
     # The pixel location of the star.
     star_loc_pix =
-        Model.linear_world_to_pix(ea.patches[s, b].wcs_jacobian,
+        linear_world_to_pix(ea.patches[s, b].wcs_jacobian,
                                   ea.patches[s, b].center,
                                   ea.patches[s, b].pixel_center,
                                   ea.vp[s][lidx.u]) -
@@ -440,8 +367,8 @@ function accumulate_band_in_elbo!(
                 E_G = fsms.E_G[h_fsm, w_fsm]
                 var_G = fsms.var_G[h_fsm, w_fsm]
 
-                # There are no derivatives with respect to epsilon, so can safely add
-                # to the value.
+                # There are no derivatives with respect to epsilon, so can
+                # afely add to the value.
                 E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
 
                 # Note that with a lanczos_width > 1 negative values are
@@ -455,15 +382,17 @@ function accumulate_band_in_elbo!(
                 #          fsms.fs0m_conv[h_fsm, w_fsm].v[1],
                 #          fsms.fs1m_conv[h_fsm, w_fsm].v[1],
                 #          tile.epsilon_mat[pixel.h, pixel.w]))
-                add_elbo_log_term!(elbo_vars, E_G, var_G, elbo_vars.elbo, this_pixel, iota)
+                add_elbo_log_term!(
+                    elbo_vars, E_G, var_G, elbo_vars.elbo, this_pixel, iota)
                 add_scaled_sfs!(elbo_vars.elbo, E_G, -iota,
                                 elbo_vars.calculate_hessian &&
                                 elbo_vars.calculate_derivs)
 
                 # Subtract the log factorial term. This is not a function of the
-                # parameters so the derivatives don't need to be updated. Note that
-                # even though this does not affect the ELBO's maximum, it affects
-                # the optimization convergence criterion, so I will leave it in for now.
+                # parameters so the derivatives don't need to be updated. Note
+                # that even though this does not affect the ELBO's maximum,
+                # it affects the optimization convergence criterion, so I will
+                # leave it in for now.
                 elbo_vars.elbo.v[1] -= lfact(this_pixel)
             end
         end
@@ -498,4 +427,4 @@ end
 using StaticArrays
 
 
-#end
+end
