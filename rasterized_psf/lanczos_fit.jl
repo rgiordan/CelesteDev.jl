@@ -10,10 +10,12 @@ include(joinpath(Pkg.dir("Celeste"), "test", "Synthetic.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/celeste_tools/celeste_tools.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 
+
+FSMSensitiveFloatMatrices()
 
 # using PSFConvolution
 
@@ -66,56 +68,9 @@ current_elbo_time = time()
 elbo = DeterministicVI.elbo(ea);
 current_elbo_time = time() - current_elbo_time
 
-##############
-
-b = 3
-
-# Get the actual PSF images using the /first/ source.
-psf_image_vec =
-    Matrix{Float64}[ PSF.get_psf_at_point(ea.patches[1, b].psf) for b in 1:ea.N ];
-
-star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
-wcs_jacobian = ea.patches[1, b].wcs_jacobian
-
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
-star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
-lanczos_interpolate!(star_sf_image, psf_image, star_loc, 3.0, wcs_jacobian, true)
-matshow([ sf.v[1] for sf in star_sf_image])
-plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
-
-# matshow([ sf.d[star_ids.u[1], 1] for sf in star_sf_image])
-matshow([ sf.h[star_ids.u[1], star_ids.u[1]] for sf in star_sf_image])
-plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
 
 
-sinc_with_derivatives(2.5)
-sinc(2.5)
-
-
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
-lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(2.5, 3.0)
-
-x = 2.5
-a = 3.0
-sinc_x, sinc_x_d, sinc_x_h = sinc_with_derivatives(x)
-sinc_xa, sinc_xa_d, sinc_xa_h = sinc_with_derivatives(x / a)
-lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(x, a)
-lanczos_kernel(x, a)
-
-
-
-b = 3
-
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
-gal_mcs = load_gal_bvn_mixtures(
-        ea.S, ea.patches, ea.vp, ea.active_sources, b,
-        calculate_derivs=true,
-        calculate_hessian=true);
-
-
-################################
-#
-
+###########################
 using StaticArrays
 import Celeste.Model
 import Celeste.Model.SkyPatch
@@ -124,6 +79,8 @@ ea_fft = ElboArgs(tiled_images, deepcopy(vp), tile_source_map,
                   deepcopy(patches), [1]; psf_K=1);
 load_active_pixels!(ea_fft, false);
 
+psf_image_mat = Matrix{Float64}[
+    PSF.get_psf_at_point(ea.patches[s, b].psf) for s in 1:ea.S, b in 1:ea.N];
 
 # Then set the fft ea "psf" to a small width to interpolate the pixelated PSF.
 point_psf_width = 0.5;
@@ -133,22 +90,16 @@ for s in 1:size(ea_fft.patches)[1], b in 1:size(ea_fft.patches)[2]
     ea_fft.patches[s, b] = SkyPatch(ea_fft.patches[s, b], Model.PsfComponent[ point_psf ]);
 end
 
-# matshow(PSF.get_psf_at_point([point_psf]))
-# matshow(psf_image_vec[3])
-# sum(PSF.get_psf_at_point([point_psf]))
-# sum(psf_image_vec[3])
-
-
-######################################
-
 elbo_vars_fft = DeterministicVI.ElboIntermediateVariables(
     Float64, ea_fft.S, length(ea_fft.active_sources));
 
 fsm_vec = FSMSensitiveFloatMatrices[FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
-initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_vec);
+initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
 
 # For compilation
-elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, fsm_vec);
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
+include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, 3, fsm_vec);
 
 elbo_time = time()
 elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, fsm_vec);
@@ -164,6 +115,55 @@ hcat(elbo_fft.d, elbo.d)
 # plot((elbo_fft.d + 1e-6) ./ (elbo.d + 1e-6), "o")
 # plot((elbo_fft.h + 1e-6) ./ (elbo.h + 1e-6), "o")
 
+
+
+
+
+##############
+
+b = 3
+
+# Get the actual PSF images using the /first/ source.
+psf_image_vec =
+    Matrix{Float64}[ PSF.get_psf_at_point(ea.patches[1, b].psf) for b in 1:ea.N ];
+
+star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
+wcs_jacobian = ea.patches[1, b].wcs_jacobian
+
+star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
+lanczos_interpolate!(star_sf_image, psf_image, star_loc, 3.0, wcs_jacobian, true)
+matshow([ sf.v[1] for sf in star_sf_image])
+plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
+
+# matshow([ sf.d[star_ids.u[1], 1] for sf in star_sf_image])
+matshow([ sf.h[star_ids.u[1], star_ids.u[1]] for sf in star_sf_image])
+plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
+
+
+sinc_with_derivatives(2.5)
+sinc(2.5)
+
+
+lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(2.5, 3.0)
+
+x = 2.5
+a = 3.0
+sinc_x, sinc_x_d, sinc_x_h = sinc_with_derivatives(x)
+sinc_xa, sinc_xa_d, sinc_xa_h = sinc_with_derivatives(x / a)
+lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(x, a)
+lanczos_kernel(x, a)
+
+
+
+b = 3
+gal_mcs = load_gal_bvn_mixtures(
+        ea.S, ea.patches, ea.vp, ea.active_sources, b,
+        calculate_derivs=true,
+        calculate_hessian=true);
+
+
+################################
+#
 
 
 

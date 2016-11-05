@@ -37,7 +37,7 @@ function lanczos_interpolate!{NumType <: Number}(
     h_psf_width = (size(psf_image, 1) + 1) / 2.0
     w_psf_width = (size(psf_image, 2) + 1) / 2.0
     # h, w are pixel coordinates.
-    for h = 1:size(star_image, 1), w = 1:size(star_image, 2)
+    for h = 1:size(image, 1), w = 1:size(image, 2)
 
         # h_psf, w_psf are in psf coordinates.
         # The PSF is centered at star_loc + psf_width.
@@ -52,13 +52,21 @@ function lanczos_interpolate!{NumType <: Number}(
                 for w_ind = max(w_ind0 - a_int + 1, 1):min(w_ind0 + a_int, size(psf_image, 2))
                     lw = lanczos_kernel(w_psf - w_ind, a)
                     if lw != 0
-                        star_image[h, w] += psf_image[h_ind, w_ind] * lh * lw
+                        image[h, w] += psf_image[h_ind, w_ind] * lh * lw
                     end
                 end
             end
         end
     end
 end
+
+using SensitiveFloats.SensitiveFloat
+using SensitiveFloats.zero_sensitive_float
+using SensitiveFloats.zero_sensitive_float_array
+using SensitiveFloats.SensitiveFloat
+using SensitiveFloats.clear!
+using StaticArrays
+
 
 import Celeste.Model.getids
 import Celeste.SensitiveFloats.multiply_sfs!
@@ -69,11 +77,11 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
         image::Matrix{SensitiveFloat{ParamType, NumType}},
         psf_image::Matrix{Float64},
         object_loc::Vector{NumType},
-        a::Float64,
+        a_int::Int,
         wcs_jacobian::Matrix{Float64},
         calculate_hessian::Bool)
 
-    a_int = Int(a)
+    a = Float64(a_int)
     h_psf_width = (size(psf_image, 1) + 1) / 2.0
     w_psf_width = (size(psf_image, 2) + 1) / 2.0
 
@@ -91,7 +99,7 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
     k_w_hess = wcs_jacobian' * Float64[0 0; 0 1] * wcs_jacobian
 
     # h, w are pixel coordinates.
-    for h = 1:size(star_image, 1), w = 1:size(star_image, 2)
+    for h = 1:size(image, 1), w = 1:size(image, 2)
 
         # h_psf, w_psf are in psf coordinates.
         # The PSF is centered at object_loc + psf_width.
