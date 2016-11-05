@@ -97,23 +97,40 @@ initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 
-# It appears that the interpolation is giving negative values.
-elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, 3, fsm_vec);
+function elbo_fft_opt{NumType <: Number}(
+                    ea::ElboArgs{NumType};
+                    calculate_derivs=true,
+                    calculate_hessian=true)
+    elbo_vars_fft = DeterministicVI.ElboIntermediateVariables(
+        Float64, ea.S, length(ea.active_sources));
+    @assert ea.psf_K == 1
+    elbo_likelihood_with_fft!(ea, elbo_vars_fft, 1, fsm_vec);
+    DeterministicVI.subtract_kl!(ea, elbo, calculate_derivs=calculate_derivs)
+    return deepcopy(elbo_vars_fft.elbo)
+end
+
+elbo_fft = elbo_fft_opt(ea_fft);
 
 elbo_time = time()
-elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, 3, fsm_vec);
-DeterministicVI.subtract_kl!(ea, elbo_vars_fft.elbo, calculate_derivs=true);
+elbo_fft_opt(ea_fft);
 elbo_time = time() - elbo_time
 
 println("Time ratio: ", elbo_time / current_elbo_time)
-
-elbo_fft = deepcopy(elbo_vars_fft.elbo);
 
 println(elbo_fft.v[1], " ", elbo.v[1])
 hcat(elbo_fft.d, elbo.d)
 # plot((elbo_fft.d + 1e-6) ./ (elbo.d + 1e-6), "o")
 # plot((elbo_fft.h + 1e-6) ./ (elbo.h + 1e-6), "o")
 
+f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
+    DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, verbose=true);
+f_evals, max_f, max_x, nm_result =
+    DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
+
+max_f_fft
+max_f
+
+hcat(max_x_fft, max_x)
 
 
 ######################################
@@ -124,7 +141,7 @@ hcat(elbo_fft.d, elbo.d)
 # populate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
-populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec, 3);
+populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec, 1);
 
 PyPlot.close("all")
 b = 5
@@ -156,14 +173,18 @@ for pixel in ea.active_pixels
 end
 matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
 
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
-include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
-
-fft_image = Float64[ sf.v[1] for sf in fsm_vec[b].fs0m_conv ];
-minimum(fft_image)
-maximum(fft_image)
-matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
-matshow(fsm_vec[b].psf_vec[s]); colorbar(); title("PSF")
+# include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
+# include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+#
+# fft_image = Float64[ sf.v[1] for sf in fsm_vec[b].fs0m_conv ];
+# minimum(fft_image)
+# maximum(fft_image)
+# matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
+# sum(fft_image[fft_image .< 0])
+# sum(fft_image[fft_image .> 0])
+# sum(fft_image)
+# sum(fsm_vec[b].psf_vec[s])
+# matshow(fsm_vec[b].psf_vec[s]); colorbar(); title("PSF")
 
 # Display rendered image
 rendered_image = render_source(ea, s, sub_image, false);

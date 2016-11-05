@@ -444,13 +444,17 @@ function accumulate_band_in_elbo!(
                 # to the value.
                 E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
 
+                # Note that with a lanczos_width > 1 negative values are
+                # possible, and this will result in an error in \
+                # add_elbo_log_term.
+
                 # Add the terms to the elbo given the brightness.
                 iota = tile.iota_vec[pixel.h]
-                println((b, h_fsm, w_fsm,
-                         E_G.v[1],
-                         fsms.fs0m_conv[h_fsm, w_fsm].v[1],
-                         fsms.fs1m_conv[h_fsm, w_fsm].v[1],
-                         tile.epsilon_mat[pixel.h, pixel.w]))
+                # println((b, h_fsm, w_fsm,
+                #          E_G.v[1],
+                #          fsms.fs0m_conv[h_fsm, w_fsm].v[1],
+                #          fsms.fs1m_conv[h_fsm, w_fsm].v[1],
+                #          tile.epsilon_mat[pixel.h, pixel.w]))
                 add_elbo_log_term!(elbo_vars, E_G, var_G, elbo_vars.elbo, this_pixel, iota)
                 add_scaled_sfs!(elbo_vars.elbo, E_G, -iota,
                                 elbo_vars.calculate_hessian &&
