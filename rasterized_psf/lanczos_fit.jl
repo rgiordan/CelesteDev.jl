@@ -14,9 +14,6 @@ include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/celeste_tools/celeste_
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 
-
-FSMSensitiveFloatMatrices()
-
 # using PSFConvolution
 
 
@@ -99,10 +96,12 @@ initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
 # For compilation
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
+
+# It appears that the interpolation is giving negative values.
 elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, 3, fsm_vec);
 
 elbo_time = time()
-elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, fsm_vec);
+elbo_likelihood_with_fft!(ea_fft, elbo_vars_fft, 3, fsm_vec);
 DeterministicVI.subtract_kl!(ea, elbo_vars_fft.elbo, calculate_derivs=true);
 elbo_time = time() - elbo_time
 
@@ -117,68 +116,18 @@ hcat(elbo_fft.d, elbo.d)
 
 
 
-
-
-##############
-
-b = 3
-
-# Get the actual PSF images using the /first/ source.
-psf_image_vec =
-    Matrix{Float64}[ PSF.get_psf_at_point(ea.patches[1, b].psf) for b in 1:ea.N ];
-
-star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
-wcs_jacobian = ea.patches[1, b].wcs_jacobian
-
-star_sf_image = zero_sensitive_float_array(StarPosParams, Float64, 1, 60, 60);
-lanczos_interpolate!(star_sf_image, psf_image, star_loc, 3.0, wcs_jacobian, true)
-matshow([ sf.v[1] for sf in star_sf_image])
-plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
-
-# matshow([ sf.d[star_ids.u[1], 1] for sf in star_sf_image])
-matshow([ sf.h[star_ids.u[1], star_ids.u[1]] for sf in star_sf_image])
-plot(star_loc[2] - 1, star_loc[1] - 1, "ro")
-
-
-sinc_with_derivatives(2.5)
-sinc(2.5)
-
-
-lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(2.5, 3.0)
-
-x = 2.5
-a = 3.0
-sinc_x, sinc_x_d, sinc_x_h = sinc_with_derivatives(x)
-sinc_xa, sinc_xa_d, sinc_xa_h = sinc_with_derivatives(x / a)
-lh_v, lh_d, lh_h = lanczos_kernel_with_derivatives(x, a)
-lanczos_kernel(x, a)
-
-
-
-b = 3
-gal_mcs = load_gal_bvn_mixtures(
-        ea.S, ea.patches, ea.vp, ea.active_sources, b,
-        calculate_derivs=true,
-        calculate_hessian=true);
-
-
-################################
-#
-
-
-
 ######################################
 
 # Debugging
-populate_star_fsm_image!(ea, elbo_vars, s, b, fsms.psf_vec[s], fsms.fs0m_conv, lanczos_width)
-populate_gal_fsm_image!(ea, elbo_vars, s, b, gal_mcs_vec[b], fsms)
-populate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
+# populate_star_fsm_image!(ea, elbo_vars, s, b, fsms.psf_vec[s], fsms.fs0m_conv, lanczos_width)
+# populate_gal_fsm_image!(ea, elbo_vars, s, b, gal_mcs_vec[b], fsms)
+# populate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
 
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec, 3);
 
 PyPlot.close("all")
-b = 3
+b = 5
 s = ea.active_sources[1]
 sub_image = get_source_pixel_range(s, b, ea);
 pix_loc =
@@ -187,6 +136,11 @@ pix_loc =
 plot_loc() = plot(pix_loc[2] - 1, pix_loc[1] - 1,  "ro")
 
 # Display fft image
+minimum([ sf.v[1] for sf in fsm_vec[b].fs0m_conv ])
+minimum([ sf.v[1] for sf in fsm_vec[b].fs1m_conv ])
+maximum([ sf.v[1] for sf in fsm_vec[b].fs0m_conv ])
+maximum([ sf.v[1] for sf in fsm_vec[b].fs1m_conv ])
+
 fft_image = Float64[ sf.v[1] for sf in fsm_vec[b].E_G ];
 for pixel in ea.active_pixels
     if pixel.n == b
@@ -205,25 +159,11 @@ matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/lanczos.jl")
 include("/home/rgiordan/Documents/git_repos/CelesteDev.jl/rasterized_psf/predicted_image.jl")
 
-# fs0m_conv = fsm_vec[b].fs0m_conv;
-# for sf in fs0m_conv clear!(sf) end
-# # The pixel location of the star.
-# star_loc_pix =
-#     Model.linear_world_to_pix(ea_fft.patches[s, b].wcs_jacobian,
-#                               ea_fft.patches[s, b].center,
-#                               ea_fft.patches[s, b].pixel_center,
-#                               ea_fft.vp[s][lidx.u]) -
-#   Float64[ fsm_vec[b].h_lower, fsm_vec[b].w_lower ]
-#
-# lanczos_interpolate!(fs0m_conv, fsm_vec[b].psf_vec[s], star_loc_pix, 3,
-#                      ea.patches[s, b].wcs_jacobian, true);
-#
-populate_star_fsm_image!(
-    ea_fft, elbo_vars_fft, s, b, fsm_vec[b].psf_vec[s], fsm_vec[b].fs0m_conv,
-    fsm_vec[b].h_lower, fsm_vec[b].w_lower, 3)
 fft_image = Float64[ sf.v[1] for sf in fsm_vec[b].fs0m_conv ];
+minimum(fft_image)
 maximum(fft_image)
 matshow(fft_image); title("FFT image"); colorbar(); plot_loc()
+matshow(fsm_vec[b].psf_vec[s]); colorbar(); title("PSF")
 
 # Display rendered image
 rendered_image = render_source(ea, s, sub_image, false);

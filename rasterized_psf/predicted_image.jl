@@ -199,7 +199,8 @@ function populate_fsm_vec!(
     for b=1:ea.N
         for s in 1:ea.S
             populate_star_fsm_image!(
-                ea, elbo_vars, s, b, fsm_vec[b].psf_vec[s], fsm_vec[b].fs0m_conv, lanczos_width)
+                ea, elbo_vars, s, b, fsm_vec[b].psf_vec[s], fsm_vec[b].fs0m_conv,
+                fsm_vec[b].h_lower, fsm_vec[b].w_lower, lanczos_width)
             populate_gal_fsm_image!(ea, elbo_vars, s, b, gal_mcs_vec[b], fsm_vec[b])
             populate_source_band_brightness!(ea, elbo_vars, s, b, fsm_vec[b], sbs[s])
         end
@@ -415,8 +416,7 @@ function accumulate_band_in_elbo!(
     fsms::FSMSensitiveFloatMatrices,
     sbs::Vector{SourceBrightness{Float64}},
     gal_mcs_vec::Array{Array{GalaxyCacheComponent{Float64}, 4}},
-    b::Int, include_epsilon::Bool,
-    lanczos_width::Int)
+    b::Int, lanczos_width::Int)
 
     clear_brightness!(fsms)
 
@@ -439,14 +439,18 @@ function accumulate_band_in_elbo!(
 
                 E_G = fsms.E_G[h_fsm, w_fsm]
                 var_G = fsms.var_G[h_fsm, w_fsm]
-                if include_epsilon
-                    # There are no derivatives with respect to epsilon, so can safely add
-                    # to the value.
-                    E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
-                end
+
+                # There are no derivatives with respect to epsilon, so can safely add
+                # to the value.
+                E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
 
                 # Add the terms to the elbo given the brightness.
                 iota = tile.iota_vec[pixel.h]
+                println((b, h_fsm, w_fsm,
+                         E_G.v[1],
+                         fsms.fs0m_conv[h_fsm, w_fsm].v[1],
+                         fsms.fs1m_conv[h_fsm, w_fsm].v[1],
+                         tile.epsilon_mat[pixel.h, pixel.w]))
                 add_elbo_log_term!(elbo_vars, E_G, var_G, elbo_vars.elbo, this_pixel, iota)
                 add_scaled_sfs!(elbo_vars.elbo, E_G, -iota,
                                 elbo_vars.calculate_hessian &&
@@ -483,7 +487,7 @@ function elbo_likelihood_with_fft!(
     clear!(elbo_vars.elbo)
     for b in 1:ea.N
         accumulate_band_in_elbo!(ea, elbo_vars, fsm_vec[b], sbs, gal_mcs_vec,
-                                 b, true, lanczos_width)
+                                 b, lanczos_width)
     end
 end
 
