@@ -75,83 +75,99 @@ type FSMSensitiveFloatMatrices
 end
 
 
+function initialize_fsm_sf_matrices_band!(
+    fsms::FSMSensitiveFloatMatrices,
+    b::Int,
+    num_active_sources::Int,
+    h_lower::Int, w_lower::Int,
+    h_upper::Int, w_upper::Int,
+    psf_image_mat::Matrix{Matrix{Float64}})
+
+    # Require that every PSF is the same size, since we are only
+    # keeping one padded matrix for the whole band.
+    psf_sizes = Set([ size(im) for im in psf_image_mat[:, b] ])
+    @assert length(psf_sizes) == 1
+    psf_size = pop!(psf_sizes)
+
+    fsms.h_lower = h_lower[b]
+    fsms.w_lower = w_lower[b]
+
+    h_width = h_upper[b] - h_lower[b] + 1
+    w_width = w_upper[b] - w_lower[b] + 1
+
+    # An fsm value is only sensitive to one source's parameters.
+    fsms.fs1m_image = zero_sensitive_float_array(
+        GalaxyPosParams, Float64, 1, h_width, w_width);
+    fsms.fs1m_conv = zero_sensitive_float_array(
+        GalaxyPosParams, Float64, 1, h_width, w_width);
+
+    fsms.fs0m_conv = zero_sensitive_float_array(
+        StarPosParams, Float64, 1, h_width, w_width);
+
+    # The amount of padding introduced by the convolution
+    (fft_size1, fft_size2) =
+        (h_width + psf_size[1] - 1, w_width + psf_size[2] - 1)
+    # Make sure that the PSF has an odd dimension.
+    @assert psf_size[1] % 2 == 1
+    @assert psf_size[2] % 2 == 1
+    fsms.pad_pix_h = Integer((psf_size[1] - 1) / 2)
+    fsms.pad_pix_w = Integer((psf_size[2] - 1) / 2)
+
+    fsms.fs1m_image_padded = zero_sensitive_float_array(
+        GalaxyPosParams, Float64, 1, fft_size1, fft_size2);
+    fsms.fs1m_conv_padded = zero_sensitive_float_array(
+        GalaxyPosParams, Float64, 1, fft_size1, fft_size2);
+
+    # Brightness images
+    fsms.E_G = zero_sensitive_float_array(
+        CanonicalParams, Float64, num_active_sources, h_width, w_width);
+    fsms.var_G = zero_sensitive_float_array(
+        CanonicalParams, Float64, num_active_sources, h_width, w_width);
+
+    # Store the psf image and its FFT.
+    S = size(psf_image_mat, 1)
+    fsms.psf_fft_vec = Array(Matrix{Complex{Float64}}, S)
+    fsms.psf_vec = Array(Matrix{Float64}, S)
+    for s in 1:size(psf_image_mat, 1)
+        fsms.psf_fft_vec[s] =
+            zeros(Complex{Float64}, fft_size1, fft_size2);
+        fsms.psf_fft_vec[s][1:psf_size[1], 1:psf_size[2]] =
+            psf_image_mat[s, b];
+        fft!(fsms.psf_fft_vec[s]);
+        fsms.psf_vec[s] = psf_image_mat[s, b]
+    end
+end
+
+
 function initialize_fsm_sf_matrices!(
     fsm_vec::Vector{FSMSensitiveFloatMatrices},
     ea::ElboArgs{Float64},
     psf_image_mat::Matrix{Matrix{Float64}})
 
     # Get the extreme active pixels in each band.
-    h_lower = Int[typemax(Int) for b in ea.images ]
-    w_lower = Int[typemax(Int) for b in ea.images ]
-    h_upper = Int[0 for b in ea.images ]
-    w_upper = Int[0 for b in ea.images ]
+    h_lower_vec = Int[typemax(Int) for b in ea.images ]
+    w_lower_vec = Int[typemax(Int) for b in ea.images ]
+    h_upper_vec = Int[0 for b in ea.images ]
+    w_upper_vec = Int[0 for b in ea.images ]
 
     # TODO: no need to correspond to tile boundaries
     for pixel in ea.active_pixels
         tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-        h_lower[pixel.n] = min(h_lower[pixel.n], tile.h_range.start)
-        h_upper[pixel.n] = max(h_upper[pixel.n], tile.h_range.stop)
-        w_lower[pixel.n] = min(w_lower[pixel.n], tile.w_range.start)
-        w_upper[pixel.n] = max(w_upper[pixel.n], tile.w_range.stop)
+        h_lower_vec[pixel.n] = min(h_lower_vec[pixel.n], tile.h_range.start)
+        h_upper_vec[pixel.n] = max(h_upper_vec[pixel.n], tile.h_range.stop)
+        w_lower_vec[pixel.n] = min(w_lower_vec[pixel.n], tile.w_range.start)
+        w_upper_vec[pixel.n] = max(w_upper_vec[pixel.n], tile.w_range.stop)
     end
 
-    sa_n = length(ea.active_sources)
+    num_active_sources = length(ea.active_sources)
 
     # Pre-allocate arrays.
     for b in 1:ea.N
-        # Require that every PSF is the same size, since we are only
-        # keeping one padded matrix for the whole band.
-        psf_sizes = Set([ size(im) for im in psf_image_mat[:, b] ])
-        @assert length(psf_sizes) == 1
-        psf_size = pop!(psf_sizes)
-
-        fsm_vec[b].h_lower = h_lower[b]
-        fsm_vec[b].w_lower = w_lower[b]
-
-        h_width = h_upper[b] - h_lower[b] + 1
-        w_width = w_upper[b] - w_lower[b] + 1
-
-        # An fsm value is only sensitive to one source's parameters.
-        fsm_vec[b].fs1m_image = zero_sensitive_float_array(
-            GalaxyPosParams, Float64, 1, h_width, w_width);
-        fsm_vec[b].fs1m_conv = zero_sensitive_float_array(
-            GalaxyPosParams, Float64, 1, h_width, w_width);
-
-        fsm_vec[b].fs0m_conv = zero_sensitive_float_array(
-            StarPosParams, Float64, 1, h_width, w_width);
-
-        # The amount of padding introduced by the convolution.  Make sure
-        # that the PSF has an odd dimension.
-        (fft_size1, fft_size2) =
-            (h_width + psf_size[1] - 1, w_width + psf_size[2] - 1)
-        @assert psf_size[1] % 2 == 1
-        @assert psf_size[2] % 2 == 1
-        fsm_vec[b].pad_pix_h = Integer((psf_size[1] - 1) / 2)
-        fsm_vec[b].pad_pix_w = Integer((psf_size[2] - 1) / 2)
-
-        fsm_vec[b].fs1m_image_padded = zero_sensitive_float_array(
-            GalaxyPosParams, Float64, 1, fft_size1, fft_size2);
-        fsm_vec[b].fs1m_conv_padded = zero_sensitive_float_array(
-            GalaxyPosParams, Float64, 1, fft_size1, fft_size2);
-
-        # Brightness images
-        fsm_vec[b].E_G = zero_sensitive_float_array(
-            CanonicalParams, Float64, sa_n, h_width, w_width);
-        fsm_vec[b].var_G = zero_sensitive_float_array(
-            CanonicalParams, Float64, sa_n, h_width, w_width);
-
-        # Store the psf image and its FFT.
-        S = size(psf_image_mat, 1)
-        fsm_vec[b].psf_fft_vec = Array(Matrix{Complex{Float64}}, S)
-        fsm_vec[b].psf_vec = Array(Matrix{Float64}, S)
-        for s in 1:size(psf_image_mat, 1)
-            fsm_vec[b].psf_fft_vec[s] =
-                zeros(Complex{Float64}, fft_size1, fft_size2);
-            fsm_vec[b].psf_fft_vec[s][1:psf_size[1], 1:psf_size[2]] =
-                psf_image_mat[s, b];
-            fft!(fsm_vec[b].psf_fft_vec[s]);
-            fsm_vec[b].psf_vec[s] = psf_image_mat[s, b]
-        end
+        initialize_fsm_sf_matrices_band!(
+            fsm_vec[b], b, num_active_sources,
+            h_lower_vec[b], w_lower_vec[b],
+            h_upper_vec[b], w_upper_vec[b],
+            psf_image_mat)
     end
 end
 

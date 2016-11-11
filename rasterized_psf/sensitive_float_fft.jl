@@ -3,9 +3,8 @@ Convolve a matrix of sensitive floats (represented by conv_fft) with a matrix of
 
 Args:
   - sf_matrix: A matrix of sensitive floats arranged spatially
-  - float_matrix: Pre-allocated memory the same size as sf_matrix
-  - conv_fft: The FFT of the signal you want to convolve, same size as sf_matrix
-  - fft_plan: The plan for the FFT based on the size of sf_matrix.
+  - conv_fft: Pre-allocated memory the same size as sf_matrix
+  - sf_matrix_out: The FFT of the signal you want to convolve, same size as sf_matrix
 """
 function convolve_sensitive_float_matrix!{ParamType <: ParamSet}(
     sf_matrix::Matrix{SensitiveFloat{ParamType, Float64}},
