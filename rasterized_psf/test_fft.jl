@@ -30,37 +30,116 @@ using SensitiveFloats.SensitiveFloat
 using SensitiveFloats.clear!
 
 
-fsms = ELBOPixelatedPSF.FSMSensitiveFloatMatrices();
-psf_image_mat = Matrix{Matrix{Float64}}(1, 1);
-psf_image = zeros(3, 3);
-psf_image[2, 2] = 0.5;
-psf_image[2, 1] = psf_image[1, 2] = 0.25;
-psf_image_mat[1, 1] = psf_image;
-ELBOPixelatedPSF.initialize_fsm_sf_matrices_band!(
-    fsms, 1, 1, 1, 1, 3, 3, psf_image_mat)
+function test_convolve_sensitive_float_matrix()
+    # Use the FSMSensitiveFloatMatrices because it initializes all the
+    # sizes for us automatically.
+    fsms = ELBOPixelatedPSF.FSMSensitiveFloatMatrices();
+    psf_image_mat = Matrix{Matrix{Float64}}(1, 1);
+    psf_image = zeros(3, 3);
+    psf_image[2, 2] = 0.5;
+    psf_image[2, 1] = psf_image[1, 2] = 0.25;
+    psf_image_mat[1, 1] = psf_image;
+    ELBOPixelatedPSF.initialize_fsm_sf_matrices_band!(
+        fsms, 1, 1, 1, 1, 3, 3, psf_image_mat)
 
-sf = zero_sensitive_float(GalaxyPosParams, Float64)
-sf.v[1] = 3;
-sf.d[:, 1] = rand(size(sf.d, 1))
-h = rand(size(sf.h))
-sf.h = h * h';
-fsms.fs1m_image_padded[2, 2] = deepcopy(sf);
-ELBOPixelatedPSF.convolve_sensitive_float_matrix!(
-    fsms.fs1m_image_padded, fsms.psf_fft_vec[1], fsms.fs1m_conv_padded);
-h_indices = (1:3) + fsms.pad_pix_h
-w_indices = (1:3) + fsms.pad_pix_w
-conv_image =
-    Float64[ sf.v[1] for sf in fsms.fs1m_conv_padded ][h_indices, w_indices];
-@test_approx_eq(sf.v[1] * psf_image, conv_image)
-
-for ind in 1:size(sf.d, 1)
+    sf = zero_sensitive_float(GalaxyPosParams, Float64)
+    sf.v[1] = 3;
+    sf.d[:, 1] = rand(size(sf.d, 1))
+    h = rand(size(sf.h))
+    sf.h = h * h';
+    fsms.fs1m_image_padded[2, 2] = deepcopy(sf);
+    ELBOPixelatedPSF.convolve_sensitive_float_matrix!(
+        fsms.fs1m_image_padded, fsms.psf_fft_vec[1], fsms.fs1m_conv_padded);
+    h_indices = (1:3) + fsms.pad_pix_h
+    w_indices = (1:3) + fsms.pad_pix_w
     conv_image =
-        Float64[ sf.d[ind] for sf in fsms.fs1m_conv_padded ][h_indices, w_indices];
-    @test_approx_eq(sf.d[ind] * psf_image, conv_image)
+        Float64[ sf.v[1] for sf in fsms.fs1m_conv_padded ][h_indices, w_indices];
+    @test_approx_eq(sf.v[1] * psf_image, conv_image)
+
+    for ind in 1:size(sf.d, 1)
+        conv_image =
+            Float64[ sf.d[ind] for sf in fsms.fs1m_conv_padded ][h_indices, w_indices];
+        @test_approx_eq(sf.d[ind] * psf_image, conv_image)
+    end
+
+    for ind1 in 1:size(sf.h, 1), ind2 in 1:size(sf.h, 2)
+        conv_image =
+            Float64[ sf.h[ind1, ind2] for sf in fsms.fs1m_conv_padded ][h_indices, w_indices];
+        @test_approx_eq(sf.h[ind1, ind2] * psf_image, conv_image)
+    end
 end
 
-for ind1 in 1:size(sf.h, 1), ind2 in 1:size(sf.h, 2)
-    conv_image =
-        Float64[ sf.h[ind1, ind2] for sf in fsms.fs1m_conv_padded ][h_indices, w_indices];
-    @test_approx_eq(sf.h[ind1, ind2] * psf_image, conv_image)
+
+# Test lanczos_interpolate!
+using ForwardDiff
+using ELBOPixelatedPSF
+
+psf_image = zeros(Float64, 5, 5);
+psf_image[3, 3] = 0.5
+psf_image[2, 3] = psf_image[3, 2] = psf_image[4, 3] = psf_image[3, 4] = 0.125
+
+# function lanczos_interpolate_loc{T <: Number}(star_loc::Vector{T})
+#     image = zeros(T, 11, 11);
+#     ELBOPixelatedPSF.lanczos_interpolate!(image, psf_image, star_loc, 2)
+#     return image
+# end
+#
+# image = lanczos_interpolate_loc(Float64[5, 5])
+# @test_approx_eq psf_image image[3:7, 3:7]
+#
+# image_pixel = sub2ind(size(image), 5, 5)
+# function lanczos_interpolate_loc_pixel{T <: Number}(star_loc::Vector{T})
+#     image = lanczos_interpolate_loc(star_loc)
+#     return image[image_pixel]
+# end
+#
+# star_loc = Float64[5, 5]
+# lanczos_interpolate_loc_pixel(star_loc)
+#
+import Base.floor
+function floor(x::ForwardDiff.Dual{2,Float64})
+    return floor(x.value)
 end
+
+import Base.sinc
+function sinc(x::ForwardDiff.Dual{2,Float64})
+    # Note that this won't work with x = 0.
+    return sin(x) / x
+end
+#
+# star_loc = Float64[5.1, 5.2]
+# grad = ForwardDiff.gradient(lanczos_interpolate_loc_pixel, star_loc)
+# sf = lanczos_interpolate_loc_pixel(star_loc)
+#
+# sf.d[ids.u, 1]
+
+
+T = Float64
+star_loc = Float64[5.1, 5.2]
+function lanczos_interpolate_loc{T <: Number}(star_loc::Vector{T})
+    image = zero_sensitive_float_array(StarPosParams, T, 1, 11, 11);
+    ELBOPixelatedPSF.lanczos_interpolate!(image, psf_image, star_loc, 2)
+    return image
+end
+
+function lanczos_kernel_fd{NumType <: Number}(x::NumType)
+    ELBOPixelatedPSF.lanczos_kernel(x, 2.0)
+end
+
+
+function lanczos_kernel_with_derivatives(x::ForwardDiff.Dual{2,Float64}, a::Float64)
+    if x.value < a
+        return zero(ForwardDiff.Dual{2,Float64})
+    else
+        return lanczos_kernel_with_derivatives_nocheck(x, a)
+    end
+end
+
+
+grad = ForwardDiff.gradient(lanczos_kernel_fd, 0.7)
+
+
+
+
+
+######################
