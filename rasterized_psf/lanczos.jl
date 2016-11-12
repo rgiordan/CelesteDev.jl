@@ -13,7 +13,8 @@ function sinc_with_derivatives{NumType <: Number}(x::NumType)
 end
 
 
-function lanczos_kernel_with_derivatives_nocheck{NumType <: Number}(x::NumType, a::Float64)
+function lanczos_kernel_with_derivatives_nocheck{NumType <: Number}(
+    x::NumType, a::Float64)
     sinc_x, sinc_x_d, sinc_x_h = sinc_with_derivatives(x)
     sinc_xa, sinc_xa_d, sinc_xa_h = sinc_with_derivatives(x / a)
 
