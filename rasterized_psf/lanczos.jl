@@ -6,9 +6,10 @@ end
 
 
 function sinc_with_derivatives{NumType <: Number}(x::NumType)
+    x_pi = pi * x
     sinc_x = sinc(x)
-    sinc_x_d = (cos(x) - sinc_x) / x
-    sinc_x_h = sinc_x - 2 * sinc_x_d / x
+    sinc_x_d = (cos(x_pi) - sinc_x) / x
+    sinc_x_h = -pi * (pi * sinc_x + 2 * sinc_x_d / x_pi)
     return sinc_x, sinc_x_d, sinc_x_h
 end
 

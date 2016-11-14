@@ -104,28 +104,34 @@ end
 import Base.sinc
 function sinc(x::ForwardDiff.Dual{2,Float64})
     # Note that this won't work with x = 0.
-    return sin(x) / x
+    return sin(x * pi) / (x * pi)
+end
+
+function sinc(x::ForwardDiff.Dual{1,Float64})
+    # Note that this won't work with x = 0.
+    return sin(x * pi) / (x * pi)
+end
+
+function sinc(x::ForwardDiff.Dual{1,ForwardDiff.Dual{1,Float64}})
+    # Note that this won't work with x = 0.
+    return sin(x * pi) / (x * pi)
 end
 
 function floor(x::ForwardDiff.Dual{1,Float64})
     return floor(x.value)
 end
 
-function sinc(x::ForwardDiff.Dual{1,Float64})
-    # Note that this won't work with x = 0.
-    return sin(x) / x
-end
-
 function floor(x::ForwardDiff.Dual{1,ForwardDiff.Dual{1,Float64}})
     return floor(x.value)
 end
 
-function sinc(x::ForwardDiff.Dual{1,ForwardDiff.Dual{1,Float64}})
-    # Note that this won't work with x = 0.
-    return sin(x) / x
-end
 
+x = ForwardDiff.Dual{1, Float64}(1.5)
+sinc(x).value
+sinc(x.value)
 
+sin(1.5 * pi) / (1.5 * pi)
+sinc(1.5)
 
 #
 # star_loc = Float64[5.1, 5.2]
@@ -157,7 +163,31 @@ fd_d = ForwardDiff.gradient(lanczos_kernel_fd, Float64[ x ])[1]
 fd_h = ForwardDiff.hessian(lanczos_kernel_fd, Float64[ x ])[1, 1]
 
 v, d, h = ELBOPixelatedPSF.lanczos_kernel_with_derivatives_nocheck(x, lanczos_width)
+
+@test_approx_eq fd_v v
 @test_approx_eq fd_d d
 @test_approx_eq fd_h h
+
+
+
+
+function sinc_with_derivatives_fd{T <: Number}(x::Vector{T})
+    v, d, h = ELBOPixelatedPSF.sinc_with_derivatives(x[1])
+    return v
+end
+
+x = 0.7
+fd_v = sinc_with_derivatives_fd(Float64[ x ])
+fd_d = ForwardDiff.gradient(sinc_with_derivatives_fd, Float64[ x ])[1]
+fd_h = ForwardDiff.hessian(sinc_with_derivatives_fd, Float64[ x ])[1, 1]
+
+v, d, h = ELBOPixelatedPSF.sinc_with_derivatives(x)
+
+@test_approx_eq sinc(x) v
+@test_approx_eq fd_v v
+@test_approx_eq fd_d d
+@test_approx_eq fd_h h
+
+
 
 ######################

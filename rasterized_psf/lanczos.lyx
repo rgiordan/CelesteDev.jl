@@ -169,10 +169,11 @@ The derivatives pass through the Lanczos kernel.
 \begin_inset Formula 
 \begin{align*}
 L\left(x;a\right) & =\sinc\left(x\right)\sinc\left(\frac{x}{a}\right)\mathbb{I}\left(\left|x\right|<a\right)\\
- & =\frac{\sin x}{x}\frac{\sin\left(\frac{x}{a}\right)}{\frac{x}{a}}\mathbb{I}\left(\left|x\right|<a\right)\\
-\sinc'\left(x\right)=\frac{d\sinc\left(x\right)}{dx} & =\frac{\cos x}{x}-\frac{\sin x}{x^{2}}=\frac{x\cos x-\sin x}{x^{2}}=\frac{\cos x-\sinc x}{x}\\
-\sinc''\left(x\right)=\frac{d^{2}\sinc\left(x\right)}{dx^{2}} & =\frac{\sin x-\sinc'x}{x}-\frac{\sinc'\left(x\right)}{x}\\
- & =\sinc x-2\frac{\sinc'\left(x\right)}{x}\\
+ & =\frac{\sin\pi x}{\pi x}\frac{\sin\left(\frac{\pi x}{a}\right)}{\frac{\pi x}{a}}\mathbb{I}\left(\left|x\right|<a\right)\\
+\sinc'\left(x\right)=\frac{d\sinc\left(x\right)}{dx} & =\pi\left(\frac{\cos\pi x}{\pi x}-\frac{\sin\pi x}{\pi^{2}x^{2}}\right)=\frac{\pi x\cos x-\sin x}{x^{2}}=\pi\frac{\cos\pi x-\sinc x}{\pi x}\\
+\sinc''\left(x\right)=\frac{d^{2}\sinc\left(x\right)}{dx^{2}} & =\pi\left(\frac{-\pi\sin\pi x-\sinc'x}{\pi x}-\frac{\cos\pi x-\sinc x}{\left(\pi x\right)^{2}}\right)\\
+ & =\pi\left(\frac{-\pi\sin\pi x-\sinc'x}{\pi x}-\frac{\sinc'\left(x\right)}{\pi x}\right)\\
+ & =-\pi\left(\pi\sinc x+2\frac{\sinc'\left(x\right)}{\pi x}\right)\\
 \frac{dL\left(x;a\right)}{dx} & =\left(\sinc'\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc\left(x\right)\sinc'\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
 \frac{d^{2}L\left(x;a\right)}{dx^{2}} & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)\\
  & =\left(\sinc''\left(x\right)\sinc\left(\frac{x}{a}\right)+\frac{2}{a}\sinc'\left(x\right)\sinc'\left(\frac{x}{a}\right)+\frac{1}{a^{2}}\sinc\left(x\right)\sinc''\left(\frac{x}{a}\right)\right)\mathbb{I}\left(\left|x\right|<a\right)
