@@ -30,6 +30,32 @@ using SensitiveFloats.SensitiveFloat
 using SensitiveFloats.clear!
 
 
+using ForwardDiff
+using ELBOPixelatedPSF
+
+# Overload some base functions for testing with ForwardDiff
+import Base.floor
+function floor{N}(x::ForwardDiff.Dual{N,Float64})
+    return floor(x.value)
+end
+
+function floor{N}(x::ForwardDiff.Dual{N,ForwardDiff.Dual{N,Float64}})
+    return floor(x.value)
+end
+
+
+import Base.sinc
+function sinc{N}(x::ForwardDiff.Dual{N,Float64})
+    # Note that this won't work with x = 0, but it's ok for testing.
+    return sin(x * pi) / (x * pi)
+end
+
+function sinc{N}(x::ForwardDiff.Dual{N,ForwardDiff.Dual{N,Float64}})
+    # Note that this won't work with x = 0.
+    return sin(x * pi) / (x * pi)
+end
+
+
 function test_convolve_sensitive_float_matrix()
     # Use the FSMSensitiveFloatMatrices because it initializes all the
     # sizes for us automatically.
@@ -70,124 +96,60 @@ function test_convolve_sensitive_float_matrix()
 end
 
 
-# Test lanczos_interpolate!
-using ForwardDiff
-using ELBOPixelatedPSF
+function test_sinc()
+    function sinc_with_derivatives_fd{T <: Number}(x::Vector{T})
+        v, d, h = ELBOPixelatedPSF.sinc_with_derivatives(x[1])
+        return v
+    end
 
-psf_image = zeros(Float64, 5, 5);
-psf_image[3, 3] = 0.5
-psf_image[2, 3] = psf_image[3, 2] = psf_image[4, 3] = psf_image[3, 4] = 0.125
+    x = 0.7
+    fd_v = sinc_with_derivatives_fd(Float64[ x ])
+    fd_d = ForwardDiff.gradient(sinc_with_derivatives_fd, Float64[ x ])[1]
+    fd_h = ForwardDiff.hessian(sinc_with_derivatives_fd, Float64[ x ])[1, 1]
 
-# function lanczos_interpolate_loc{T <: Number}(star_loc::Vector{T})
-#     image = zeros(T, 11, 11);
-#     ELBOPixelatedPSF.lanczos_interpolate!(image, psf_image, star_loc, 2)
-#     return image
-# end
-#
-# image = lanczos_interpolate_loc(Float64[5, 5])
-# @test_approx_eq psf_image image[3:7, 3:7]
-#
-# image_pixel = sub2ind(size(image), 5, 5)
-# function lanczos_interpolate_loc_pixel{T <: Number}(star_loc::Vector{T})
-#     image = lanczos_interpolate_loc(star_loc)
-#     return image[image_pixel]
-# end
-#
-# star_loc = Float64[5, 5]
-# lanczos_interpolate_loc_pixel(star_loc)
-#
-import Base.floor
-function floor(x::ForwardDiff.Dual{2,Float64})
-    return floor(x.value)
-end
+    v, d, h = ELBOPixelatedPSF.sinc_with_derivatives(x)
 
-import Base.sinc
-function sinc(x::ForwardDiff.Dual{2,Float64})
-    # Note that this won't work with x = 0.
-    return sin(x * pi) / (x * pi)
-end
-
-function sinc(x::ForwardDiff.Dual{1,Float64})
-    # Note that this won't work with x = 0.
-    return sin(x * pi) / (x * pi)
-end
-
-function sinc(x::ForwardDiff.Dual{1,ForwardDiff.Dual{1,Float64}})
-    # Note that this won't work with x = 0.
-    return sin(x * pi) / (x * pi)
-end
-
-function floor(x::ForwardDiff.Dual{1,Float64})
-    return floor(x.value)
-end
-
-function floor(x::ForwardDiff.Dual{1,ForwardDiff.Dual{1,Float64}})
-    return floor(x.value)
+    @test_approx_eq sinc(x) v
+    @test_approx_eq fd_v v
+    @test_approx_eq fd_d d
+    @test_approx_eq fd_h h
 end
 
 
-x = ForwardDiff.Dual{1, Float64}(1.5)
-sinc(x).value
-sinc(x.value)
+function test_lanczos_kernel()
+    psf_image = zeros(Float64, 5, 5);
+    psf_image[3, 3] = 0.5
+    psf_image[2, 3] = psf_image[3, 2] = psf_image[4, 3] = psf_image[3, 4] = 0.125
 
-sin(1.5 * pi) / (1.5 * pi)
-sinc(1.5)
+    star_loc = Float64[5.1, 5.2]
+    lanczos_width = 2.0
 
-#
-# star_loc = Float64[5.1, 5.2]
-# grad = ForwardDiff.gradient(lanczos_interpolate_loc_pixel, star_loc)
-# sf = lanczos_interpolate_loc_pixel(star_loc)
-#
-# sf.d[ids.u, 1]
+    function lanczos_interpolate_loc{T <: Number}(star_loc::Vector{T})
+        image = zero_sensitive_float_array(StarPosParams, T, 1, 11, 11);
+        ELBOPixelatedPSF.lanczos_interpolate!(image, psf_image, star_loc, 2)
+        return image
+    end
 
+    function lanczos_kernel_fd{NumType <: Number}(x_vec::Vector{NumType})
+        v, d, h = ELBOPixelatedPSF.lanczos_kernel_with_derivatives_nocheck(
+            x_vec[1], lanczos_width)
+        return v
+    end
 
-T = Float64
-star_loc = Float64[5.1, 5.2]
-lanczos_width = 2.0
-function lanczos_interpolate_loc{T <: Number}(star_loc::Vector{T})
-    image = zero_sensitive_float_array(StarPosParams, T, 1, 11, 11);
-    ELBOPixelatedPSF.lanczos_interpolate!(image, psf_image, star_loc, 2)
-    return image
+    x = 0.7
+    fd_v = lanczos_kernel_fd([x])
+    fd_d = ForwardDiff.gradient(lanczos_kernel_fd, Float64[ x ])[1]
+    fd_h = ForwardDiff.hessian(lanczos_kernel_fd, Float64[ x ])[1, 1]
+
+    v, d, h = ELBOPixelatedPSF.lanczos_kernel_with_derivatives_nocheck(x, lanczos_width)
+
+    @test_approx_eq fd_v v
+    @test_approx_eq fd_d d
+    @test_approx_eq fd_h h
 end
 
-function lanczos_kernel_fd{NumType <: Number}(x_vec::Vector{NumType})
-    x = x_vec[1]
-    v, d, h = ELBOPixelatedPSF.lanczos_kernel_with_derivatives_nocheck(
-        x, lanczos_width)
-    return v
-end
 
-x = 0.7
-fd_v = lanczos_kernel_fd([x])
-fd_d = ForwardDiff.gradient(lanczos_kernel_fd, Float64[ x ])[1]
-fd_h = ForwardDiff.hessian(lanczos_kernel_fd, Float64[ x ])[1, 1]
-
-v, d, h = ELBOPixelatedPSF.lanczos_kernel_with_derivatives_nocheck(x, lanczos_width)
-
-@test_approx_eq fd_v v
-@test_approx_eq fd_d d
-@test_approx_eq fd_h h
-
-
-
-
-function sinc_with_derivatives_fd{T <: Number}(x::Vector{T})
-    v, d, h = ELBOPixelatedPSF.sinc_with_derivatives(x[1])
-    return v
-end
-
-x = 0.7
-fd_v = sinc_with_derivatives_fd(Float64[ x ])
-fd_d = ForwardDiff.gradient(sinc_with_derivatives_fd, Float64[ x ])[1]
-fd_h = ForwardDiff.hessian(sinc_with_derivatives_fd, Float64[ x ])[1, 1]
-
-v, d, h = ELBOPixelatedPSF.sinc_with_derivatives(x)
-
-@test_approx_eq sinc(x) v
-@test_approx_eq fd_v v
-@test_approx_eq fd_d d
-@test_approx_eq fd_h h
-
+test_lanczos_kernel()
 
 
 ######################

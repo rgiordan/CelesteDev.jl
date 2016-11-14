@@ -14,6 +14,7 @@ function sinc_with_derivatives{NumType <: Number}(x::NumType)
 end
 
 
+# A function without checking a.  Factored out for testing with ForwardDiff..
 function lanczos_kernel_with_derivatives_nocheck{NumType <: Number}(
     x::NumType, a::Float64)
     sinc_x, sinc_x_d, sinc_x_h = sinc_with_derivatives(x)
