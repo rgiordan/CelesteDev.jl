@@ -124,12 +124,6 @@ function test_lanczos_kernel()
     star_loc = Float64[5.1, 5.2]
     lanczos_width = 2.0
 
-    function lanczos_interpolate_loc{T <: Number}(star_loc::Vector{T})
-        image = zero_sensitive_float_array(StarPosParams, T, 1, 11, 11);
-        ELBOPixelatedPSF.lanczos_interpolate!(image, psf_image, star_loc, 2)
-        return image
-    end
-
     function lanczos_kernel_fd{NumType <: Number}(x_vec::Vector{NumType})
         v, d, h = ELBOPixelatedPSF.lanczos_kernel_with_derivatives_nocheck(
             x_vec[1], lanczos_width)
@@ -137,7 +131,7 @@ function test_lanczos_kernel()
     end
 
     x = 0.7
-    fd_v = lanczos_kernel_fd([x])
+    fd_v = lanczos_kernel_fd([ x ])
     fd_d = ForwardDiff.gradient(lanczos_kernel_fd, Float64[ x ])[1]
     fd_h = ForwardDiff.hessian(lanczos_kernel_fd, Float64[ x ])[1, 1]
 
@@ -149,7 +143,46 @@ function test_lanczos_kernel()
 end
 
 
-test_lanczos_kernel()
+function test_lanczos_interpolate()
+    psf_image = zeros(Float64, 5, 5);
+    psf_image[3, 3] = 0.5
+    psf_image[2, 3] = psf_image[3, 2] = psf_image[4, 3] = psf_image[3, 4] = 0.125
 
+    local wcs_jacobian = Float64[0.9 0.2; 0.1 0.8]
+    local world_loc = Float64[5.1, 5.2]
+    local lanczos_width = 2
+
+    image_size = (11, 11)
+    function lanczos_interpolate_loc{T <: Number}(
+        world_loc::Vector{T}, calculate_derivs::Bool)
+        local image = zero_sensitive_float_array(StarPosParams, T, 1, image_size...);
+        local pixel_loc = Celeste.Model.linear_world_to_pix(
+            wcs_jacobian, Float64[0., 0.], Float64[1.0, 0.5], world_loc)
+        ELBOPixelatedPSF.lanczos_interpolate!(
+            image, psf_image, pixel_loc, lanczos_width, wcs_jacobian,
+            calculate_derivs, calculate_derivs)
+        return image
+    end
+
+    image = lanczos_interpolate_loc(world_loc, true)
+    for test_pix in prod(image_size)
+        function lanczos_interpolate_loc_fd{T <: Number}(world_loc::Vector{T})
+            local image = lanczos_interpolate_loc(world_loc, false)
+            return image[test_pix].v[1]
+        end
+
+        fd_v = lanczos_interpolate_loc_fd(world_loc)
+        fd_d = ForwardDiff.gradient(lanczos_interpolate_loc_fd, world_loc)
+        fd_h = ForwardDiff.hessian(lanczos_interpolate_loc_fd, world_loc)
+
+        @test_approx_eq image[test_pix].v[1] fd_v
+        @test_approx_eq image[test_pix].d fd_d
+        @test_approx_eq image[test_pix].h fd_h
+    end
+end
 
 ######################
+test_sinc()
+test_lanczos_kernel()
+test_convolve_sensitive_float_matrix()
+test_lanczos_interpolate()

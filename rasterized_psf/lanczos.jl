@@ -89,6 +89,7 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
         object_loc::Vector{NumType},
         a_int::Int,
         wcs_jacobian::Matrix{Float64},
+        calculate_derivs::Bool,
         calculate_hessian::Bool)
 
     a = Float64(a_int)
@@ -102,11 +103,15 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
     kernel_h = zero_sensitive_float(ParamType, NumType, 1)
 
     # Pre-compute terms for transforming derivatives to world coordinates.
-    k_h_grad = wcs_jacobian' * Float64[1, 0]
-    k_h_hess = wcs_jacobian' * Float64[1 0; 0 0] * wcs_jacobian
+    if calculate_derivs
+        k_h_grad = wcs_jacobian' * Float64[1, 0]
+        k_w_grad = wcs_jacobian' * Float64[0, 1]
 
-    k_w_grad = wcs_jacobian' * Float64[0, 1]
-    k_w_hess = wcs_jacobian' * Float64[0 0; 0 1] * wcs_jacobian
+        if calculate_hessian
+            k_h_hess = wcs_jacobian' * Float64[1 0; 0 0] * wcs_jacobian
+            k_w_hess = wcs_jacobian' * Float64[0 0; 0 1] * wcs_jacobian
+        end
+    end
 
     # h, w are pixel coordinates.
     for h = 1:size(image, 1), w = 1:size(image, 2)
@@ -125,10 +130,15 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
             if lh_v != 0
                 clear!(kernel_h)
                 kernel_h.v[1] = lh_v
-                # This is -1 * wcs_jacobian' * [lh_d, 0]
-                # and -1 * wcs_jacobian' * [lh_h 0; 0 0] * wcs_jacobian
-                kernel_h.d[param_ids.u] = -1 * k_h_grad * lh_d
-                kernel_h.h[param_ids.u, param_ids.u] = -1 * k_h_hess * lh_h;
+
+                if calculate_derivs
+                    # This is -1 * wcs_jacobian' * [lh_d, 0]
+                    # and -1 * wcs_jacobian' * [lh_h 0; 0 0] * wcs_jacobian
+                    kernel_h.d[param_ids.u] = -1 * k_h_grad * lh_d
+                    if calculate_hessian
+                        kernel_h.h[param_ids.u, param_ids.u] = k_h_hess * lh_h;
+                    end
+                end
                 w_lower = max(w_ind0 - a_int + 1, 1)
                 w_upper = min(w_ind0 + a_int, size(psf_image, 2))
                 for w_ind = (w_lower:w_upper)
@@ -139,12 +149,19 @@ function lanczos_interpolate!{NumType <: Number, ParamType <: ParamSet}(
                         kernel.v[1] = lw_v
                         # This is -1 * wcs_jacobian' * [0, lw_d]
                         # and -1 * wcs_jacobian' * [0 0; 0 lw_h] * wcs_jacobian
-                        kernel.d[param_ids.u] = -1 * k_w_grad * lw_d;
-                        kernel.h[param_ids.u, param_ids.u] = -1 * k_w_hess * lw_h;
-                        multiply_sfs!(kernel, kernel_h, calculate_hessian)
-                        add_scaled_sfs!(
-                            image[h, w], kernel, psf_image[h_ind, w_ind],
-                            calculate_hessian)
+                        if calculate_derivs
+                            kernel.d[param_ids.u] = -1 * k_w_grad * lw_d;
+                            if calculate_hessian
+                                kernel.h[param_ids.u, param_ids.u] = k_w_hess * lw_h;
+                            end
+                            multiply_sfs!(kernel, kernel_h, calculate_hessian)
+                            add_scaled_sfs!(
+                                image[h, w], kernel, psf_image[h_ind, w_ind],
+                                calculate_hessian)
+                        else
+                            image[h, w].v[1] +=
+                                kernel.v[1] * kernel_h.v[1] * psf_image[h_ind, w_ind]
+                        end
                         # println(image[h, w].v[1])
                     end
                 end
