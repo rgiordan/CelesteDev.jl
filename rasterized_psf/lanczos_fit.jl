@@ -95,6 +95,11 @@ ELBOPixelatedPSF.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
 ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, 1, fsm_vec);
 
 
+
+
+
+
+
 # For compilation
 function elbo_fft_opt{NumType <: Number}(
                     ea::ElboArgs{NumType};

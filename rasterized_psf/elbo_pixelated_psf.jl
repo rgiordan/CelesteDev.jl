@@ -242,10 +242,10 @@ function initialize_fsm_sf_matrices!(
     h_upper_vec = Int[0 for b in ea.images ]
     w_upper_vec = Int[0 for b in ea.images ]
 
-    # TODO: no need to correspond to tile boundaries
     for s in ea.active_sources, n in 1:ea.N
         p = ea.patches[s, n]
-        h1, w1 = p.bitmap_corner
+        h1 = p.bitmap_corner[1] + 1
+        w1 = p.bitmap_corner[2] + 1
         h2 = h1 + size(p.active_pixel_bitmap, 1) - 1
         w2 = w1 + size(p.active_pixel_bitmap, 2) - 1
         h_lower_vec[n] = min(h_lower_vec[n], h1)
@@ -417,8 +417,6 @@ function populate_source_band_brightness!(
     fsms::FSMSensitiveFloatMatrices,
     sb::SourceBrightness{Float64})
 
-    # For now s is fixed, and only doing one band.
-    # for s in tile_sources
     active_source = s in ea.active_sources
     calculate_hessian =
         ea.elbo_vars.calculate_hessian && ea.elbo_vars.calculate_derivs &&
@@ -430,12 +428,13 @@ function populate_source_band_brightness!(
         h_fsm = h_patch + p.bitmap_corner[1] - fsms.h_lower + 1
         w_fsm = w_patch + p.bitmap_corner[2] - fsms.w_lower + 1
         accumulate_source_pixel_brightness!(
+                            ea.elbo_vars,
                             ea,
                             fsms.E_G[h_fsm, w_fsm],
                             fsms.var_G[h_fsm, w_fsm],
                             fsms.fs0m_conv[h_fsm, w_fsm],
                             fsms.fs1m_conv[h_fsm, w_fsm],
-                            sb, b, s, active_source)
+                            sb, n, s, active_source)
     end
 end
 
@@ -460,14 +459,22 @@ function accumulate_band_in_elbo!(
         populate_source_band_brightness!(ea, s, n, fsms, sbs[s])
     end
 
-    p = ea.patches[s, n]
-    H_patch, W_patch = size(p.active_pixel_bitmap)
-    for w_patch in 1:W_patch, h_patch in 1:H_patch
-        h_image = h_patch + p.bitmap_corner[1]
-        w_image = w_patch + p.bitmap_corner[2]
+    # Iterate only over active sources, since we have already added the
+    # contributions from non-active sources to E_G and var_G.
+    for s in ea.active_sources
+        p = ea.patches[s, n]
+        H_patch, W_patch = size(p.active_pixel_bitmap)
+        for w_patch in 1:W_patch, h_patch in 1:H_patch
+            h_image = h_patch + p.bitmap_corner[1]
+            w_image = w_patch + p.bitmap_corner[2]
 
-        this_pixel = tile.pixels[h_image, w_image]
-        if !Base.isnan(this_pixel)
+            image = ea.images[n]
+            this_pixel = image.pixels[h_image, w_image]
+
+            if Base.isnan(this_pixel)
+                continue
+            end
+
             # These are indices within the fs?m image.
             h_fsm = h_image - fsms.h_lower + 1
             w_fsm = w_image - fsms.w_lower + 1
@@ -477,14 +484,14 @@ function accumulate_band_in_elbo!(
 
             # There are no derivatives with respect to epsilon, so can
             # afely add to the value.
-            E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
+            E_G.v[1] += image.epsilon_mat[h_image, w_image]
 
             # Note that with a lanczos_width > 1 negative values are
             # possible, and this will result in an error in
             # add_elbo_log_term.
 
             # Add the terms to the elbo given the brightness.
-            iota = tile.iota_vec[h_image]
+            iota = image.iota_vec[h_image]
             add_elbo_log_term!(
                 ea.elbo_vars, E_G, var_G, ea.elbo_vars.elbo, this_pixel, iota)
             add_scaled_sfs!(ea.elbo_vars.elbo, E_G, -iota,
