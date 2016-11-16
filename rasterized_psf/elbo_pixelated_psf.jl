@@ -33,6 +33,100 @@ typealias fs0mMatrix Matrix{SensitiveFloat{StarPosParams, Float64}}
 typealias fs1mMatrix Matrix{SensitiveFloat{GalaxyPosParams, Float64}}
 
 
+import Celeste.Model.GalaxyCacheComponent
+import Celeste.DeterministicVI.BvnComponent
+
+# To be included in Celeste.
+
+
+# Get a GalaxyCacheComponent with no PSF
+function GalaxyCacheComponent{NumType <: Number}(
+    e_dev_dir::Float64, e_dev_i::NumType,
+    gc::GalaxyComponent, u::Vector{NumType},
+    e_axis::NumType, e_angle::NumType, e_scale::NumType,
+    calculate_derivs::Bool, calculate_hessian::Bool)
+
+    # Declare in advance to save memory allocation.
+    const empty_sig_sf =
+        GalaxySigmaDerivs(Array(NumType, 0, 0), Array(NumType, 0, 0, 0))
+
+    XiXi = get_bvn_cov(e_axis, e_angle, e_scale)
+    var_s = gc.nuBar * XiXi
+
+    # d siginv / dsigma is only necessary for the Hessian.
+    bmc = BvnComponent{NumType}(
+        SVector{2, NumType}(u), var_s, gc.etaBar,
+        calculate_derivs && calculate_hessian)
+
+    if calculate_derivs
+        sig_sf = GalaxySigmaDerivs(
+            e_angle, e_axis, e_scale, XiXi, calculate_hessian)
+        sig_sf.j .*= gc.nuBar
+        if calculate_hessian
+            # The tensor is only needed for the Hessian.
+            sig_sf.t .*= gc.nuBar
+        end
+    else
+        sig_sf = empty_sig_sf
+    end
+
+    GalaxyCacheComponent(e_dev_dir, e_dev_i, bmc, sig_sf)
+end
+
+
+import Celeste.Model.lidx
+import Celeste.Model.GalaxySigmaDerivs
+import Celeste.Model.get_bvn_cov
+import Celeste.Model.galaxy_prototypes
+import Celeste.Model.linear_world_to_pix
+
+"""
+No PSF.
+"""
+function load_gal_bvn_mixtures{NumType <: Number}(
+                    S::Int64,
+                    patches::Matrix{SkyPatch},
+                    source_params::Vector{Vector{NumType}},
+                    active_sources::Vector{Int},
+                    b::Int;
+                    calculate_derivs::Bool=true,
+                    calculate_hessian::Bool=true)
+
+    # To maintain consistency with the rest of the code, use a 4d
+    # array.  The first dimension was previously the PSF component.
+    gal_mcs = Array(GalaxyCacheComponent{NumType}, 1, 8, 2, S)
+
+    # TODO: do not keep any derviative information if the sources are not in
+    # active_sources.
+    for s in 1:S
+        sp  = source_params[s]
+        world_loc = sp[lidx.u]
+        m_pos = linear_world_to_pix(
+            patches[s, b].wcs_jacobian,
+            patches[s, b].center,
+            patches[s, b].pixel_center, world_loc)
+
+        for i = 1:2 # i indexes dev vs exp galaxy types.
+            e_dev_dir = (i == 1) ? 1. : -1.
+            e_dev_i = (i == 1) ? sp[lidx.e_dev] : 1. - sp[lidx.e_dev]
+
+            # Galaxies of type 1 have 8 components, and type 2 have 6 components.
+            for j in 1:[8,6][i]
+                gal_mcs[1, j, i, s] = GalaxyCacheComponent(
+                    e_dev_dir, e_dev_i, galaxy_prototypes[i][j], m_pos,
+                    sp[lidx.e_axis], sp[lidx.e_angle], sp[lidx.e_scale],
+                    calculate_derivs && (s in active_sources),
+                    calculate_hessian)
+            end
+        end
+    end
+
+    gal_mcs
+end
+
+
+
+
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 include(joinpath(dir, "rasterized_psf/sensitive_float_fft.jl"))
 include(joinpath(dir, "rasterized_psf/lanczos.jl"))
@@ -87,11 +181,11 @@ function initialize_fsm_sf_matrices_band!(
     @assert length(psf_sizes) == 1
     psf_size = pop!(psf_sizes)
 
-    fsms.h_lower = h_lower[b]
-    fsms.w_lower = w_lower[b]
+    fsms.h_lower = h_lower
+    fsms.w_lower = w_lower
 
-    h_width = h_upper[b] - h_lower[b] + 1
-    w_width = w_upper[b] - w_lower[b] + 1
+    h_width = h_upper - h_lower + 1
+    w_width = w_upper - w_lower + 1
 
     # An fsm value is only sensitive to one source's parameters.
     fsms.fs1m_image = zero_sensitive_float_array(
@@ -149,12 +243,15 @@ function initialize_fsm_sf_matrices!(
     w_upper_vec = Int[0 for b in ea.images ]
 
     # TODO: no need to correspond to tile boundaries
-    for pixel in ea.active_pixels
-        tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-        h_lower_vec[pixel.n] = min(h_lower_vec[pixel.n], tile.h_range.start)
-        h_upper_vec[pixel.n] = max(h_upper_vec[pixel.n], tile.h_range.stop)
-        w_lower_vec[pixel.n] = min(w_lower_vec[pixel.n], tile.w_range.start)
-        w_upper_vec[pixel.n] = max(w_upper_vec[pixel.n], tile.w_range.stop)
+    for s in ea.active_sources, n in 1:ea.N
+        p = ea.patches[s, n]
+        h1, w1 = p.bitmap_corner
+        h2 = h1 + size(p.active_pixel_bitmap, 1) - 1
+        w2 = w1 + size(p.active_pixel_bitmap, 2) - 1
+        h_lower_vec[n] = min(h_lower_vec[n], h1)
+        h_upper_vec[n] = max(h_upper_vec[n], h2)
+        w_lower_vec[n] = min(w_lower_vec[n], w1)
+        w_upper_vec[n] = max(w_upper_vec[n], w2)
     end
 
     num_active_sources = length(ea.active_sources)
@@ -172,20 +269,20 @@ end
 
 # This is just for debugging.
 function populate_fsm_vec!(
-    ea::ElboArgs, elbo_vars::ElboIntermediateVariables,
+    ea::ElboArgs,
     fsm_vec::Array{FSMSensitiveFloatMatrices},
     lanczos_width::Int)
 
     sbs = load_source_brightnesses(ea,
-        calculate_derivs=elbo_vars.calculate_derivs,
-        calculate_hessian=elbo_vars.calculate_hessian);
+        calculate_derivs=ea.elbo_vars.calculate_derivs,
+        calculate_hessian=ea.elbo_vars.calculate_hessian);
 
     gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
     for b=1:ea.N
         gal_mcs_vec[b] = load_gal_bvn_mixtures(
                 ea.S, ea.patches, ea.vp, ea.active_sources, b,
-                calculate_derivs=elbo_vars.calculate_derivs,
-                calculate_hessian=elbo_vars.calculate_hessian);
+                calculate_derivs=ea.elbo_vars.calculate_derivs,
+                calculate_hessian=ea.elbo_vars.calculate_hessian);
     end
 
     for s in 1:ea.S
@@ -194,12 +291,12 @@ function populate_fsm_vec!(
     for b=1:ea.N
         for s in 1:ea.S
             populate_star_fsm_image!(
-                ea, elbo_vars, s, b, fsm_vec[b].psf_vec[s], fsm_vec[b].fs0m_conv,
+                ea, s, b, fsm_vec[b].psf_vec[s], fsm_vec[b].fs0m_conv,
                 fsm_vec[b].h_lower, fsm_vec[b].w_lower, lanczos_width)
             populate_gal_fsm_image!(
-                ea, elbo_vars, s, b, gal_mcs_vec[b], fsm_vec[b])
+                ea, s, b, gal_mcs_vec[b], fsm_vec[b])
             populate_source_band_brightness!(
-                ea, elbo_vars, s, b, fsm_vec[b], sbs[s])
+                ea, s, b, fsm_vec[b], sbs[s])
         end
     end
 end
@@ -252,27 +349,27 @@ TODO: pass in derivative flags
 """
 function populate_gal_fsm_image!(
             ea::ElboArgs{Float64},
-            elbo_vars::ElboIntermediateVariables{Float64},
             s::Int,
-            b::Int,
+            n::Int,
             gal_mcs::Array{GalaxyCacheComponent{Float64}, 4},
             fsms::FSMSensitiveFloatMatrices)
     clear_fs1m!(fsms)
-    for pixel in ea.active_pixels
-        tile_sources = ea.tile_source_map[pixel.n][pixel.tile_ind]
-        if pixel.n == b && s in tile_sources
-            tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-            h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
-            w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
+    p = ea.patches[s, n]
+    H_patch, W_patch = size(p.active_pixel_bitmap)
+    for w_patch in 1:W_patch, h_patch in 1:H_patch
+        h_image = h_patch + p.bitmap_corner[1]
+        w_image = w_patch + p.bitmap_corner[2]
 
-            x = SVector{2, Float64}([tile.h_range[pixel.h], tile.w_range[pixel.w]])
-            populate_gal_fsm!(elbo_vars.bvn_derivs,
-                              fsms.fs1m_image[h_fsm, w_fsm],
-                              true, true,
-                              s, x, true, Inf,
-                              ea.patches[s, b].wcs_jacobian,
-                              gal_mcs)
-        end
+        h_fsm = h_image - fsms.h_lower + 1
+        w_fsm = w_image - fsms.w_lower + 1
+
+        x = SVector{2, Float64}([h_image, w_image])
+        populate_gal_fsm!(ea.elbo_vars.bvn_derivs,
+                          fsms.fs1m_image[h_fsm, w_fsm],
+                          true, true,
+                          s, x, true, Inf,
+                          p.wcs_jacobian,
+                          gal_mcs)
     end
     convolve_fs1m_image!(fsms, s);
 end
@@ -288,7 +385,6 @@ TODO: pass in derivative flags
 """
 function populate_star_fsm_image!(
             ea::ElboArgs{Float64},
-            elbo_vars::ElboIntermediateVariables{Float64},
             s::Int,
             b::Int,
             psf_image::Matrix{Float64},
@@ -299,12 +395,14 @@ function populate_star_fsm_image!(
     # The pixel location of the star.
     star_loc_pix =
         linear_world_to_pix(ea.patches[s, b].wcs_jacobian,
-                                  ea.patches[s, b].center,
-                                  ea.patches[s, b].pixel_center,
-                                  ea.vp[s][lidx.u]) -
+                            ea.patches[s, b].center,
+                            ea.patches[s, b].pixel_center,
+                            ea.vp[s][lidx.u]) -
         Float64[ h_lower - 1, w_lower - 1]
     lanczos_interpolate!(fs0m_conv, psf_image, star_loc_pix, lanczos_width,
-                         ea.patches[s, b].wcs_jacobian, true);
+                         ea.patches[s, b].wcs_jacobian,
+                         ea.elbo_vars.calculate_derivs,
+                         ea.elbo_vars.calculate_hessian);
 end
 
 
@@ -314,9 +412,8 @@ source in this band.
 """
 function populate_source_band_brightness!(
     ea::ElboArgs{Float64},
-    elbo_vars::ElboIntermediateVariables{Float64},
     s::Int,
-    b::Int,
+    n::Int,
     fsms::FSMSensitiveFloatMatrices,
     sb::SourceBrightness{Float64})
 
@@ -324,26 +421,21 @@ function populate_source_band_brightness!(
     # for s in tile_sources
     active_source = s in ea.active_sources
     calculate_hessian =
-        elbo_vars.calculate_hessian && elbo_vars.calculate_derivs &&
+        ea.elbo_vars.calculate_hessian && ea.elbo_vars.calculate_derivs &&
         active_source
 
-    for pixel in ea.active_pixels
-        if pixel.n == b
-            tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-            this_pixel = tile.pixels[pixel.h, pixel.w]
-
-            # These are indices within the fs?m image.
-            h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
-            w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
-
-            accumulate_source_pixel_brightness!(
-                                elbo_vars, ea,
-                                fsms.E_G[h_fsm, w_fsm],
-                                fsms.var_G[h_fsm, w_fsm],
-                                fsms.fs0m_conv[h_fsm, w_fsm],
-                                fsms.fs1m_conv[h_fsm, w_fsm],
-                                sb, b, s, active_source)
-        end
+    p = ea.patches[s, n]
+    H_patch, W_patch = size(p.active_pixel_bitmap)
+    for w_patch in 1:W_patch, h_patch in 1:H_patch
+        h_fsm = h_patch + p.bitmap_corner[1] - fsms.h_lower + 1
+        w_fsm = w_patch + p.bitmap_corner[2] - fsms.w_lower + 1
+        accumulate_source_pixel_brightness!(
+                            ea,
+                            fsms.E_G[h_fsm, w_fsm],
+                            fsms.var_G[h_fsm, w_fsm],
+                            fsms.fs0m_conv[h_fsm, w_fsm],
+                            fsms.fs1m_conv[h_fsm, w_fsm],
+                            sb, b, s, active_source)
     end
 end
 
@@ -353,88 +445,83 @@ Uses the values in fsms to add the contribution from this band to the ELBO.
 """
 function accumulate_band_in_elbo!(
     ea::ElboArgs{Float64},
-    elbo_vars::ElboIntermediateVariables{Float64},
     fsms::FSMSensitiveFloatMatrices,
     sbs::Vector{SourceBrightness{Float64}},
     gal_mcs_vec::Array{Array{GalaxyCacheComponent{Float64}, 4}},
-    b::Int, lanczos_width::Int)
+    n::Int, lanczos_width::Int)
 
     clear_brightness!(fsms)
 
     for s in 1:ea.S
         populate_star_fsm_image!(
-            ea, elbo_vars, s, b, fsms.psf_vec[s], fsms.fs0m_conv,
+            ea, s, n, fsms.psf_vec[s], fsms.fs0m_conv,
             fsms.h_lower, fsms.w_lower, lanczos_width)
-        populate_gal_fsm_image!(ea, elbo_vars, s, b, gal_mcs_vec[b], fsms)
-        populate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
+        populate_gal_fsm_image!(ea, s, n, gal_mcs_vec[n], fsms)
+        populate_source_band_brightness!(ea, s, n, fsms, sbs[s])
     end
 
-    for pixel in ea.active_pixels
-        if pixel.n == b
-            tile = ea.images[pixel.n].tiles[pixel.tile_ind]
-            this_pixel = tile.pixels[pixel.h, pixel.w]
-            if !Base.isnan(this_pixel)
-                # These are indices within the fs?m image.
-                h_fsm = tile.h_range[pixel.h] - fsms.h_lower + 1
-                w_fsm = tile.w_range[pixel.w] - fsms.w_lower + 1
+    p = ea.patches[s, n]
+    H_patch, W_patch = size(p.active_pixel_bitmap)
+    for w_patch in 1:W_patch, h_patch in 1:H_patch
+        h_image = h_patch + p.bitmap_corner[1]
+        w_image = w_patch + p.bitmap_corner[2]
 
-                E_G = fsms.E_G[h_fsm, w_fsm]
-                var_G = fsms.var_G[h_fsm, w_fsm]
+        this_pixel = tile.pixels[h_image, w_image]
+        if !Base.isnan(this_pixel)
+            # These are indices within the fs?m image.
+            h_fsm = h_image - fsms.h_lower + 1
+            w_fsm = w_image - fsms.w_lower + 1
 
-                # There are no derivatives with respect to epsilon, so can
-                # afely add to the value.
-                E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
+            E_G = fsms.E_G[h_fsm, w_fsm]
+            var_G = fsms.var_G[h_fsm, w_fsm]
 
-                # Note that with a lanczos_width > 1 negative values are
-                # possible, and this will result in an error in \
-                # add_elbo_log_term.
+            # There are no derivatives with respect to epsilon, so can
+            # afely add to the value.
+            E_G.v[1] += tile.epsilon_mat[pixel.h, pixel.w]
 
-                # Add the terms to the elbo given the brightness.
-                iota = tile.iota_vec[pixel.h]
-                # println((b, h_fsm, w_fsm,
-                #          E_G.v[1],
-                #          fsms.fs0m_conv[h_fsm, w_fsm].v[1],
-                #          fsms.fs1m_conv[h_fsm, w_fsm].v[1],
-                #          tile.epsilon_mat[pixel.h, pixel.w]))
-                add_elbo_log_term!(
-                    elbo_vars, E_G, var_G, elbo_vars.elbo, this_pixel, iota)
-                add_scaled_sfs!(elbo_vars.elbo, E_G, -iota,
-                                elbo_vars.calculate_hessian &&
-                                elbo_vars.calculate_derivs)
+            # Note that with a lanczos_width > 1 negative values are
+            # possible, and this will result in an error in
+            # add_elbo_log_term.
 
-                # Subtract the log factorial term. This is not a function of the
-                # parameters so the derivatives don't need to be updated. Note
-                # that even though this does not affect the ELBO's maximum,
-                # it affects the optimization convergence criterion, so I will
-                # leave it in for now.
-                elbo_vars.elbo.v[1] -= lfact(this_pixel)
-            end
+            # Add the terms to the elbo given the brightness.
+            iota = tile.iota_vec[h_image]
+            add_elbo_log_term!(
+                ea.elbo_vars, E_G, var_G, ea.elbo_vars.elbo, this_pixel, iota)
+            add_scaled_sfs!(ea.elbo_vars.elbo, E_G, -iota,
+                            ea.elbo_vars.calculate_hessian &&
+                            ea.elbo_vars.calculate_derivs)
+
+            # Subtract the log factorial term. This is not a function of the
+            # parameters so the derivatives don't need to be updated. Note
+            # that even though this does not affect the ELBO's maximum,
+            # it affects the optimization convergence criterion, so I will
+            # leave it in for now.
+            ea.elbo_vars.elbo.v[1] -= lfact(this_pixel)
         end
     end
 end
 
 
 function elbo_likelihood_with_fft!(
-    ea::ElboArgs, elbo_vars::ElboIntermediateVariables,
+    ea::ElboArgs,
     lanczos_width::Int64,
     fsm_vec::Array{FSMSensitiveFloatMatrices})
 
     sbs = load_source_brightnesses(ea,
-        calculate_derivs=elbo_vars.calculate_derivs,
-        calculate_hessian=elbo_vars.calculate_hessian);
+        calculate_derivs=ea.elbo_vars.calculate_derivs,
+        calculate_hessian=ea.elbo_vars.calculate_hessian);
 
     gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
     for b=1:ea.N
         gal_mcs_vec[b] = load_gal_bvn_mixtures(
                 ea.S, ea.patches, ea.vp, ea.active_sources, b,
-                calculate_derivs=elbo_vars.calculate_derivs,
-                calculate_hessian=elbo_vars.calculate_hessian);
+                calculate_derivs=ea.elbo_vars.calculate_derivs,
+                calculate_hessian=ea.elbo_vars.calculate_hessian);
     end
 
-    clear!(elbo_vars.elbo)
+    clear!(ea.elbo_vars.elbo)
     for b in 1:ea.N
-        accumulate_band_in_elbo!(ea, elbo_vars, fsm_vec[b], sbs, gal_mcs_vec,
-                                 b, lanczos_width)
+        accumulate_band_in_elbo!(ea, fsm_vec[b], sbs, gal_mcs_vec, b, lanczos_width)
     end
 end
 
