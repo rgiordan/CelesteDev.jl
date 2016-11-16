@@ -35,41 +35,6 @@ function lanczos_kernel_with_derivatives{NumType <: Number}(x::NumType, a::Float
 end
 
 
-# # Interpolate the PSF to the pixel values.  Stores the result in image.
-# function lanczos_interpolate!{NumType <: Number}(
-#         image::Matrix{NumType}, psf_image::Matrix{Float64},
-#         star_loc::Vector{NumType}, lanczos_a::Int64)
-#
-#     h_psf_width = (size(psf_image, 1) + 1) / 2.0
-#     w_psf_width = (size(psf_image, 2) + 1) / 2.0
-#     # h, w are pixel coordinates.
-#     for h = 1:size(image, 1), w = 1:size(image, 2)
-#
-#         # h_psf, w_psf are in psf coordinates.
-#         # The PSF is centered at star_loc + psf_width.
-#         h_psf = h - star_loc[1] + h_psf_width
-#         w_psf = w - star_loc[2] + w_psf_width
-#
-#         # Indices into the psf matrix, i.e., integer psf coordinates.
-#         h_ind0, w_ind0 = Int(floor(h_psf)), Int(floor(w_psf))
-#         h_min = max(h_ind0 - lanczos_a + 1, 1)
-#         h_max = min(h_ind0 + lanczos_a, size(psf_image, 1))
-#         for h_ind = h_min:h_max
-#             lh = lanczos_kernel(h_psf - h_ind, Float64(lanczos_a))
-#             if lh != 0
-#                 w_min = max(w_ind0 - lanczos_a + 1, 1)
-#                 w_max = min(w_ind0 + lanczos_a, size(psf_image, 2))
-#                 for w_ind = w_min:w_max
-#                     lw = lanczos_kernel(w_psf - w_ind, Float64(lanczos_a))
-#                     if lw != 0
-#                         image[h, w] += psf_image[h_ind, w_ind] * lh * lw
-#                     end
-#                 end
-#             end
-#         end
-#     end
-# end
-
 using SensitiveFloats.SensitiveFloat
 using SensitiveFloats.zero_sensitive_float
 using SensitiveFloats.zero_sensitive_float_array

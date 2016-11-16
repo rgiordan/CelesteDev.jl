@@ -10,7 +10,7 @@ include(joinpath(Pkg.dir("Celeste"), "test", "Synthetic.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
-include("celeste_tools/celeste_tools.jl")
+# include("celeste_tools/celeste_tools.jl")
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 
 # include(joinpath(dir, "rasterized_psf/lanczos.jl"))
@@ -30,13 +30,11 @@ using PyPlot
 ##########
 # Ensure that test images are available.
 const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
+rcf = Celeste.SDSSIO.RunCamcolField(4263, 5,119)
+images = Celeste.SDSSIO.load_field_images(rcf, datadir);
 
-run, camcol, field = (4263, 5,119)
-
-images = SDSSIO.load_field_images(RunCamcolField(run, camcol, field), datadir);
-tiled_images = TiledImage[TiledImage(img) for img in images];
-dir = joinpath(datadir, "$run/$camcol/$field")
-fname = @sprintf "%s/photoObj-%06d-%d-%04d.fits" dir run camcol field
+catdir = joinpath(datadir, "$run/$camcol/$field")
+fname = @sprintf "%s/photoObj-%06d-%d-%04d.fits" catdir run camcol field
 catalog = SDSSIO.read_photoobj_celeste(fname);
 
 # Pick an object.
@@ -49,21 +47,21 @@ end
 objid = "1237663784734490800"
 objids = [ce.objid for ce in catalog];
 sa = findfirst(objids, objid);
-neighbors = Infer.find_neighbors([sa], catalog, tiled_images)[1];
+neighbors = Infer.find_neighbors([sa], catalog, images)[1];
 cat_local = vcat(catalog[sa], catalog[neighbors]);
+vp = Vector{Float64}[Celeste.Infer.init_source(ce) for ce in cat_local];
+patches = Celeste.Infer.get_sky_patches(images, cat_local);
+ea = ElboArgs(images, vp, patches, [1]);
+Celeste.Infer.load_active_pixels!(ea);
 
-vp = Vector{Float64}[init_source(ce) for ce in cat_local];
-patches, tile_source_map = Infer.get_tile_source_map(tiled_images, cat_local);
-ea = ElboArgs(tiled_images, vp, tile_source_map, patches, [1]; psf_K=2);
-Infer.fit_object_psfs!(ea, ea.active_sources);
-Celeste.Infer.load_active_pixels!(ea, false);
-length(ea.active_pixels)
 
 # For compiling
-elbo = DeterministicVI.elbo(ea);
+f_evals, max_f, max_x, nm_result =
+    Celeste.DeterministicVI.maximize_f(Celeste.DeterministicVI.elbo, ea);
 
 current_elbo_time = time()
-elbo = DeterministicVI.elbo(ea);
+f_evals, max_f, max_x, nm_result =
+    Celeste.DeterministicVI.maximize_f(Celeste.DeterministicVI.elbo, ea);
 current_elbo_time = time() - current_elbo_time
 
 

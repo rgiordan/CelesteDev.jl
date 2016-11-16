@@ -4,8 +4,6 @@ using DeterministicVI.ElboArgs
 using DeterministicVI.ElboIntermediateVariables
 using DeterministicVI.BvnComponent
 using DeterministicVI.GalaxyCacheComponent
-using DeterministicVI.ActivePixel
-using DeterministicVI.ImageTile
 using DeterministicVI.SourceBrightness
 using DeterministicVI.StarPosParams
 using DeterministicVI.GalaxyPosParams
