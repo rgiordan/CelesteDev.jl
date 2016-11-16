@@ -26,42 +26,20 @@ end
 
 using DataFrames
 
-function print_vp(vp::Array{Float64, 1})
+function print_vp(vp::Vector{Float64})
     df = DataFrame(ids=ids_names)
-    for s in 1:length(vp)
-        df[symbol(string("v", s))] = vp[s]
-    end
+    s = 1
+    df[Symbol(string("v", s))] = vp
+    println(df)
 end
 
-type SubImage
-    min_h::Int
-    max_h::Int
-    min_w::Int
-    max_w::Int
-    source_tiles::Array{Celeste.Model.ImageTile}
-end
-
-
-function get_source_pixel_range(sa::Int, b::Int, ea::Celeste.DeterministicVI.ElboArgs)
-    source_tiles = ea.images[b].tiles[find([sa in tile for tile in ea.tile_source_map[b] ])];
-    min_h = minimum([tile.h_range.start for tile in source_tiles])
-    max_h = maximum([tile.h_range.stop for tile in source_tiles])
-    min_w = minimum([tile.w_range.start for tile in source_tiles])
-    max_w = maximum([tile.w_range.stop for tile in source_tiles])
-
-    return SubImage(min_h, max_h, min_w, max_w, source_tiles)
-end
-
-function get_blank_image(si::SubImage)
-    return Float64[NaN for h=1:(si.max_h - si.min_h + 1), w=1:(si.max_w - si.min_w + 1)];
-end
 
 
 using Celeste.DeterministicVI.load_source_brightnesses
 using Celeste.Model.load_bvn_mixtures
 using Celeste.DeterministicVI.add_pixel_term!
 
-function render_source(ea::ElboArgs, s::Int, n::Int; include_epsilon=false)
+function render_source(ea::ElboArgs, s::Int, n::Int; include_epsilon=true)
     p = ea.patches[s, n]
 
     image = fill(NaN, size(p.active_pixel_bitmap))

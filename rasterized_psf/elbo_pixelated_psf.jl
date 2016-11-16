@@ -354,6 +354,7 @@ function populate_gal_fsm_image!(
             gal_mcs::Array{GalaxyCacheComponent{Float64}, 4},
             fsms::FSMSensitiveFloatMatrices)
     clear_fs1m!(fsms)
+    is_active_source = s in ea.active_sources
     p = ea.patches[s, n]
     H_patch, W_patch = size(p.active_pixel_bitmap)
     for w_patch in 1:W_patch, h_patch in 1:H_patch
@@ -366,8 +367,9 @@ function populate_gal_fsm_image!(
         x = SVector{2, Float64}([h_image, w_image])
         populate_gal_fsm!(ea.elbo_vars.bvn_derivs,
                           fsms.fs1m_image[h_fsm, w_fsm],
-                          true, true,
-                          s, x, true, Inf,
+                          ea.elbo_vars.calculate_derivs,
+                          ea.elbo_vars.calculate_hessian,
+                          s, x, is_active_source, Inf,
                           p.wcs_jacobian,
                           gal_mcs)
     end
@@ -417,10 +419,10 @@ function populate_source_band_brightness!(
     fsms::FSMSensitiveFloatMatrices,
     sb::SourceBrightness{Float64})
 
-    active_source = s in ea.active_sources
+    is_active_source = s in ea.active_sources
     calculate_hessian =
         ea.elbo_vars.calculate_hessian && ea.elbo_vars.calculate_derivs &&
-        active_source
+        is_active_source
 
     p = ea.patches[s, n]
     H_patch, W_patch = size(p.active_pixel_bitmap)
@@ -434,7 +436,7 @@ function populate_source_band_brightness!(
                             fsms.var_G[h_fsm, w_fsm],
                             fsms.fs0m_conv[h_fsm, w_fsm],
                             fsms.fs1m_conv[h_fsm, w_fsm],
-                            sb, n, s, active_source)
+                            sb, n, s, is_active_source)
     end
 end
 
@@ -446,7 +448,7 @@ function accumulate_band_in_elbo!(
     ea::ElboArgs{Float64},
     fsms::FSMSensitiveFloatMatrices,
     sbs::Vector{SourceBrightness{Float64}},
-    gal_mcs_vec::Array{Array{GalaxyCacheComponent{Float64}, 4}},
+    gal_mcs::Array{GalaxyCacheComponent{Float64}, 4},
     n::Int, lanczos_width::Int)
 
     clear_brightness!(fsms)
@@ -455,8 +457,9 @@ function accumulate_band_in_elbo!(
         populate_star_fsm_image!(
             ea, s, n, fsms.psf_vec[s], fsms.fs0m_conv,
             fsms.h_lower, fsms.w_lower, lanczos_width)
-        populate_gal_fsm_image!(ea, s, n, gal_mcs_vec[n], fsms)
+        populate_gal_fsm_image!(ea, s, n, gal_mcs, fsms)
         populate_source_band_brightness!(ea, s, n, fsms, sbs[s])
+        E_G = fsms.E_G[1, 1]
     end
 
     # Iterate only over active sources, since we have already added the
@@ -518,21 +521,15 @@ function elbo_likelihood_with_fft!(
         calculate_derivs=ea.elbo_vars.calculate_derivs,
         calculate_hessian=ea.elbo_vars.calculate_hessian);
 
-    gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
-    for b=1:ea.N
-        gal_mcs_vec[b] = load_gal_bvn_mixtures(
-                ea.S, ea.patches, ea.vp, ea.active_sources, b,
+    clear!(ea.elbo_vars.elbo)
+    for n in 1:ea.N
+        gal_mcs = load_gal_bvn_mixtures(
+                ea.S, ea.patches, ea.vp, ea.active_sources, n,
                 calculate_derivs=ea.elbo_vars.calculate_derivs,
                 calculate_hessian=ea.elbo_vars.calculate_hessian);
-    end
-
-    clear!(ea.elbo_vars.elbo)
-    for b in 1:ea.N
-        accumulate_band_in_elbo!(ea, fsm_vec[b], sbs, gal_mcs_vec, b, lanczos_width)
+        accumulate_band_in_elbo!(ea, fsm_vec[n], sbs, gal_mcs, n, lanczos_width)
     end
 end
-
-using StaticArrays
 
 
 end

@@ -10,10 +10,9 @@ include(joinpath(Pkg.dir("Celeste"), "test", "Synthetic.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
-# include("celeste_tools/celeste_tools.jl")
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 
-# include(joinpath(dir, "rasterized_psf/lanczos.jl"))
+include(joinpath(dir, "celeste_tools/celeste_tools.jl"))
 include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
 
 using ELBOPixelatedPSF
@@ -72,10 +71,11 @@ current_elbo_time = time() - current_elbo_time
 
 
 ###########################
+# FFT elbo
+
 using StaticArrays
 import Celeste.Model
 import Celeste.Model.SkyPatch
-include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
 
 ea_fft = ElboArgs(images, deepcopy(vp), patches, [1], psf_K=1);
 Celeste.Infer.load_active_pixels!(ea_fft, exclude_nan=false);
@@ -83,24 +83,10 @@ Celeste.Infer.load_active_pixels!(ea_fft, exclude_nan=false);
 psf_image_mat = Matrix{Float64}[
     PSF.get_psf_at_point(ea.patches[s, b].psf) for s in 1:ea.S, b in 1:ea.N];
 
-# elbo_vars_fft = DeterministicVI.ElboIntermediateVariables(
-#     Float64, ea_fft.S, length(ea_fft.active_sources));
-
 fsm_vec = ELBOPixelatedPSF.FSMSensitiveFloatMatrices[
     ELBOPixelatedPSF.FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
 ELBOPixelatedPSF.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
 
-
-# include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
-ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, 1, fsm_vec);
-
-
-
-
-
-
-
-# For compilation
 function elbo_fft_opt{NumType <: Number}(
                     ea::ElboArgs{NumType};
                     calculate_derivs=true,
@@ -108,16 +94,51 @@ function elbo_fft_opt{NumType <: Number}(
     @assert ea.psf_K == 1
     ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, 1, fsm_vec);
     DeterministicVI.subtract_kl!(ea, elbo, calculate_derivs=calculate_derivs)
-    return deepcopy(elbo_vars_fft.elbo)
+    return deepcopy(ea.elbo_vars.elbo)
 end
 
-# include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
-ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, 1, fsm_vec);
+# For compilation
+ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea_fft, 1, fsm_vec);
+ea_fft.elbo_vars.elbo
 
 elbo_fft = elbo_fft_opt(ea_fft);
 
-######### Debugging
-ELBOPixelatedPSF.populate_fsm_vec!(ea_fft, fsm_vec, 1);
+elbo_time = time()
+elbo_fft = elbo_fft_opt(ea_fft);
+elbo_time = time() - elbo_time
+
+println("Time ratio: ", elbo_time / current_elbo_time)
+
+
+######################
+# Optimize
+
+
+f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
+    DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, verbose=true);
+f_evals, max_f, max_x, nm_result =
+    DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
+
+max_f_fft
+max_f
+
+hcat(max_x_fft, max_x)
+
+PyPlot.close("all")
+matshow(render_source(ea_fft, 1, 3)); colorbar(); title("fft rendered")
+matshow(render_source(ea, 1, 3)); colorbar(); title("orig rendered")
+matshow(show_source_image(ea, 1, 3)); colorbar(); title("original")
+matshow(show_source_image(ea, 1, 3) - render_source(ea_fft, 1, 3)); colorbar(); title("fft diff")
+matshow(show_source_image(ea, 1, 3) - render_source(ea, 1, 3)); colorbar(); title("orig diff")
+
+fft_diff = show_source_image(ea, 1, 3) - render_source(ea_fft, 1, 3);
+fft_diff[isnan(fft_diff)] = 0;
+
+orig_diff = show_source_image(ea, 1, 3) - render_source(ea, 1, 3);
+orig_diff[isnan(orig_diff)] = 0;
+
+sum(abs(fft_diff))
+sum(abs(orig_diff))
 
 
 ###################
@@ -127,15 +148,23 @@ sbs = Celeste.DeterministicVI.load_source_brightnesses(ea,
     calculate_hessian=ea.elbo_vars.calculate_hessian);
 
 using DeterministicVI.GalaxyCacheComponent
-using load_gal_bvn_mixtures
 gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
 # for b=1:ea.N
 b = 3
-    gal_mcs_vec[b] = ELBOPixelatedPSF.load_gal_bvn_mixtures(
-            ea.S, ea.patches, ea.vp, ea.active_sources, b,
-            calculate_derivs=ea.elbo_vars.calculate_derivs,
-            calculate_hessian=ea.elbo_vars.calculate_hessian);
+s = 1
+gal_mcs_vec[b] = ELBOPixelatedPSF.load_gal_bvn_mixtures(
+        ea.S, ea.patches, ea.vp, ea.active_sources, b,
+        calculate_derivs=ea.elbo_vars.calculate_derivs,
+        calculate_hessian=ea.elbo_vars.calculate_hessian);
 # end
+
+import Celeste.Model.lidx
+import Celeste.Model.GalaxySigmaDerivs
+import Celeste.Model.get_bvn_cov
+import Celeste.Model.galaxy_prototypes
+import Celeste.Model.linear_world_to_pix
+
+gal_mcs = gal_mcs_vec[b]
 NumType = Float64
 sp = ea.vp[1];
 world_loc = sp[lidx.u]
@@ -159,7 +188,11 @@ e_angle = sp[lidx.e_angle]
 e_scale = sp[lidx.e_scale]
 
 import Celeste.DeterministicVI.BvnComponent
-gal_mcs = Array(GalaxyCacheComponent{NumType}, 1, 8, 2, ea.S)
+gal_mcs = ELBOPixelatedPSF.load_gal_bvn_mixtures(
+        ea.S, ea.patches, ea.vp, ea.active_sources, b,
+        calculate_derivs=ea.elbo_vars.calculate_derivs,
+        calculate_hessian=ea.elbo_vars.calculate_hessian);
+
 XiXi = get_bvn_cov(e_axis, e_angle, e_scale)
 var_s = gc.nuBar * XiXi
 
@@ -169,29 +202,34 @@ bmc = BvnComponent{NumType}(
 sig_sf = GalaxySigmaDerivs(e_angle, e_axis, e_scale, XiXi, true)
 GalaxyCacheComponent(e_dev_dir, e_dev_i, bmc, sig_sf)
 
-#############
 
-elbo_time = time()
-elbo_fft_opt(ea_fft);
-elbo_time = time() - elbo_time
+using ELBOPixelatedPSF.populate_star_fsm_image!
+using ELBOPixelatedPSF.populate_gal_fsm_image!
+using ELBOPixelatedPSF.populate_source_band_brightness!
 
-println("Time ratio: ", elbo_time / current_elbo_time)
+n = 3
+fsms = fsm_vec[n]
+lanczos_width = 2
+for s in 1:ea.S
+    populate_star_fsm_image!(
+        ea, s, n, fsms.psf_vec[s], fsms.fs0m_conv,
+        fsms.h_lower, fsms.w_lower, lanczos_width)
+    populate_gal_fsm_image!(ea, s, n, gal_mcs, fsms)
+    populate_source_band_brightness!(ea, s, n, fsms, sbs[s])
+end
 
-println(elbo_fft.v[1], " ", elbo.v[1])
-hcat(elbo_fft.d, elbo.d)
-# plot((elbo_fft.d + 1e-6) ./ (elbo.d + 1e-6), "o")
-# plot((elbo_fft.h + 1e-6) ./ (elbo.h + 1e-6), "o")
+[ sf.d[1] for sf in fsms.fs1m_conv ]
 
-f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
-    DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, verbose=true);
-f_evals, max_f, max_x, nm_result =
-    DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
-
-max_f_fft
-max_f
-
-hcat(max_x_fft, max_x)
-
+h_fsm, w_fsm = 10, 10
+Celeste.DeterministicVI.accumulate_source_pixel_brightness!(
+                    ea.elbo_vars,
+                    ea,
+                    fsms.E_G[h_fsm, w_fsm],
+                    fsms.var_G[h_fsm, w_fsm],
+                    fsms.fs0m_conv[h_fsm, w_fsm],
+                    fsms.fs1m_conv[h_fsm, w_fsm],
+                    sbs[s], b, s, true)
+fsms.E_G[h_fsm, w_fsm].d
 
 ######################################
 
