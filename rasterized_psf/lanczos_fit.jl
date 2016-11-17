@@ -103,12 +103,12 @@ println("Time ratio: ", elbo_time / current_elbo_time)
 #####################
 # images
 
-s = 2
+s = 1
 n = 3
 
 graph_vp = deepcopy(vp)
-# graph_vp[s][ids.a] = [0, 1]
-# graph_vp[s][ids.e_scale] = 10
+graph_vp[s][ids.a] = [1, 0]
+# graph_vp[s][ids.e_scale] = 2
 ea.vp = deepcopy(graph_vp)
 ea_fft.vp = deepcopy(graph_vp)
 
@@ -119,9 +119,14 @@ PyPlot.close("all")
 matshow(image_fft); colorbar(); title("fft")
 matshow(image_orig); colorbar(); title("original")
 matshow(image_fft - image_orig); colorbar(); title("diff")
+PyPlot.figure(); plot(image_fft[:], image_orig[:], "ko"); plot(maximum(image_fft), maximum(image_fft), "rx")
+
+
 image_diff = image_fft - image_orig
 
 sum(abs(image_diff[!isnan(image_diff)])) / sum(abs(image_orig[!isnan(image_orig)]))
+mean(image_diff[!isnan(image_diff)])
+
 
 ######################
 # Optimize
