@@ -57,17 +57,19 @@ end
 function render_source(ea::ElboArgs, s::Int, n::Int;
                        include_epsilon=true, field=:E_G,
                        include_iota=true)
-    p = ea.patches[s, n]
-    image = fill(NaN, size(p.active_pixel_bitmap))
-    sbs = load_source_brightnesses(
+    local p = ea.patches[s, n]
+    local image = fill(NaN, size(p.active_pixel_bitmap))
+    local sbs = load_source_brightnesses(
         ea, calculate_derivs=false, calculate_hessian=false)
 
-    img = ea.images[n]
+    local img = ea.images[n]
     star_mcs, gal_mcs = load_bvn_mixtures(ea.S, ea.patches,
                                 ea.vp, ea.active_sources,
                                 ea.psf_K, n,
                                 calculate_derivs=false,
                                 calculate_hessian=false)
+
+    p = ea.patches[s,n]
 
     H2, W2 = size(p.active_pixel_bitmap)
     for w2 in 1:W2, h2 in 1:H2
@@ -79,9 +81,26 @@ function render_source(ea::ElboArgs, s::Int, n::Int;
             continue
         end
 
-        add_pixel_term!(ea, n, h, w, star_mcs, gal_mcs, sbs,
-                        calculate_derivs=false,
-                        calculate_hessian=false)
+        clear!(ea.elbo_vars.E_G, false)
+        clear!(ea.elbo_vars.var_G, false)
+
+        Celeste.Model.populate_fsm_vecs!(
+                                 ea.elbo_vars.bvn_derivs,
+                                 ea.elbo_vars.fs0m_vec,
+                                 ea.elbo_vars.fs1m_vec,
+                                 false,
+                                 false,
+                                 ea.patches,
+                                 ea.active_sources,
+                                 ea.num_allowed_sd,
+                                 n, h, w,
+                                 gal_mcs, star_mcs)
+
+        Celeste.DeterministicVI.accumulate_source_pixel_brightness!(
+            ea.elbo_vars, ea, ea.elbo_vars.E_G, ea.elbo_vars.var_G,
+            ea.elbo_vars.fs0m_vec[s], ea.elbo_vars.fs1m_vec[s],
+            sbs[s], ea.images[n].b, s, false)
+
         if field == :E_G
             image[h2, w2] = ea.elbo_vars.E_G.v[1]
         elseif field == :fs0m
@@ -110,20 +129,20 @@ function render_source_fft(
     include_epsilon=true, lanczos_width=1,
     field=:E_G, include_iota=true)
 
-    p = ea.patches[s, n]
-    image = fill(NaN, size(p.active_pixel_bitmap))
-    sbs = load_source_brightnesses(
+    local p = ea.patches[s, n]
+    local image = fill(NaN, size(p.active_pixel_bitmap))
+    local sbs = load_source_brightnesses(
         ea, calculate_derivs=false, calculate_hessian=false)
 
-    img = ea.images[n]
-    fsms = fsm_vec[n]
+    local img = ea.images[n]
+    local fsms = fsm_vec[n]
 
-    gal_mcs = ELBOPixelatedPSF.load_gal_bvn_mixtures(
+    local gal_mcs = ELBOPixelatedPSF.load_gal_bvn_mixtures(
             ea.S, ea.patches, ea.vp, ea.active_sources, n,
             calculate_derivs=false,
             calculate_hessian=false);
 
-    clear_brightness!(fsms)
+    ELBOPixelatedPSF.clear_brightness!(fsms)
     ELBOPixelatedPSF.populate_star_fsm_image!(
         ea, s, n, fsms.psf_vec[s], fsms.fs0m_conv,
         fsms.h_lower, fsms.w_lower, lanczos_width)
@@ -154,7 +173,7 @@ function render_source_fft(
 
     end
 
-    return image
+    return deepcopy(image)
 end
 
 
