@@ -93,6 +93,8 @@ function test_convolve_sensitive_float_matrix()
             Float64[ sf.h[ind1, ind2] for sf in fsms.fs1m_conv_padded ][h_indices, w_indices];
         @test_approx_eq(sf.h[ind1, ind2] * psf_image, conv_image)
     end
+
+    
 end
 
 

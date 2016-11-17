@@ -12,8 +12,8 @@ include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 
-include(joinpath(dir, "celeste_tools/celeste_tools.jl"))
 include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
+include(joinpath(dir, "celeste_tools/celeste_tools.jl"))
 
 using ELBOPixelatedPSF
 
@@ -40,7 +40,7 @@ for cat in catalog
         print("\n")
     end
 end
-objid = "1237663784734490643"
+objid = "1237663784734490677"
 objids = [ce.objid for ce in catalog];
 sa = findfirst(objids, objid);
 neighbors = Infer.find_neighbors([sa], catalog, images)[1];
@@ -49,17 +49,6 @@ vp = Vector{Float64}[Celeste.Infer.init_source(ce) for ce in cat_local];
 patches = Celeste.Infer.get_sky_patches(images, cat_local);
 ea = ElboArgs(images, vp, patches, [1]);
 Celeste.Infer.load_active_pixels!(ea);
-
-#
-# s = 1
-# n = 3
-# p = ea.patches[s, n];
-#
-# celeste_image = render_source(ea, 1, 3);
-# original_image = show_source_image(ea, 1, 3);
-# matshow(celeste_image); colorbar(); title("render")
-# matshow(original_image); colorbar(); title("original")
-
 
 # For compiling
 elbo = Celeste.DeterministicVI.elbo(ea);
@@ -82,7 +71,6 @@ Celeste.Infer.load_active_pixels!(ea_fft, exclude_nan=false);
 
 psf_image_mat = Matrix{Float64}[
     PSF.get_psf_at_point(ea.patches[s, b].psf) for s in 1:ea.S, b in 1:ea.N];
-
 fsm_vec = ELBOPixelatedPSF.FSMSensitiveFloatMatrices[
     ELBOPixelatedPSF.FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
 ELBOPixelatedPSF.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
@@ -92,13 +80,15 @@ function elbo_fft_opt{NumType <: Number}(
                     calculate_derivs=true,
                     calculate_hessian=true)
     @assert ea.psf_K == 1
-    ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, 1, fsm_vec);
+    ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, 2, fsm_vec);
     DeterministicVI.subtract_kl!(ea, elbo, calculate_derivs=calculate_derivs)
     return deepcopy(ea.elbo_vars.elbo)
 end
 
 # For compilation
-ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea_fft, 1, fsm_vec);
+#include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
+ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea_fft, 2, fsm_vec);
+
 ea_fft.elbo_vars.elbo
 
 elbo_fft = elbo_fft_opt(ea_fft);
@@ -110,36 +100,76 @@ elbo_time = time() - elbo_time
 println("Time ratio: ", elbo_time / current_elbo_time)
 
 
+#####################
+# images
+
+s = 2
+n = 3
+
+graph_vp = deepcopy(vp)
+# graph_vp[s][ids.a] = [0, 1]
+# graph_vp[s][ids.e_scale] = 10
+ea.vp = deepcopy(graph_vp)
+ea_fft.vp = deepcopy(graph_vp)
+
+image_fft = render_source_fft(ea, fsm_vec, s, n, include_iota=false, field=:E_G);
+image_orig = render_source(ea, s, n, include_iota=false, field=:E_G);
+
+PyPlot.close("all")
+matshow(image_fft); colorbar(); title("fft")
+matshow(image_orig); colorbar(); title("original")
+matshow(image_fft - image_orig); colorbar(); title("diff")
+image_diff = image_fft - image_orig
+
+sum(abs(image_diff[!isnan(image_diff)])) / sum(abs(image_orig[!isnan(image_orig)]))
+
 ######################
 # Optimize
 
 
+ea_fft = ElboArgs(images, deepcopy(vp), patches, [1], psf_K=1);
+Celeste.Infer.load_active_pixels!(ea_fft, exclude_nan=false);
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
-    DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, verbose=true);
+    DeterministicVI.maximize_f(elbo_fft_opt, ea_fft,
+                               verbose=true, max_iters=200);
+
+ea = ElboArgs(images, deepcopy(vp), patches, [1]);
+Celeste.Infer.load_active_pixels!(ea);
 f_evals, max_f, max_x, nm_result =
     DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
 
 max_f_fft
 max_f
 
-hcat(max_x_fft, max_x)
+s = 1
+b = 3
+
+orig_pix_loc = source_pixel_location(ea, s, b)
+fft_pix_loc = source_pixel_location(ea_fft, s, b)
+
 
 PyPlot.close("all")
-matshow(render_source(ea_fft, 1, 3)); colorbar(); title("fft rendered")
-matshow(render_source(ea, 1, 3)); colorbar(); title("orig rendered")
-matshow(show_source_image(ea, 1, 3)); colorbar(); title("original")
-matshow(show_source_image(ea, 1, 3) - render_source(ea_fft, 1, 3)); colorbar(); title("fft diff")
-matshow(show_source_image(ea, 1, 3) - render_source(ea, 1, 3)); colorbar(); title("orig diff")
+matshow(render_source(ea_fft, s, b));
+plot(fft_pix_loc[1] - 1, fft_pix_loc[2] - 1, "ro"); colorbar();
+title("fft rendered")
 
-fft_diff = show_source_image(ea, 1, 3) - render_source(ea_fft, 1, 3);
+matshow(render_source(ea, s, b));
+plot(orig_pix_loc[1] - 1, orig_pix_loc[2] - 1, "ro"); colorbar();
+title("orig rendered")
+
+matshow(show_source_image(ea, s, b)); colorbar(); title("original")
+fft_diff = show_source_image(ea, s, b) - render_source(ea_fft, s, b);
 fft_diff[isnan(fft_diff)] = 0;
 
-orig_diff = show_source_image(ea, 1, 3) - render_source(ea, 1, 3);
+orig_diff = show_source_image(ea, s, b) - render_source(ea, s, b);
 orig_diff[isnan(orig_diff)] = 0;
 
-sum(abs(fft_diff))
-sum(abs(orig_diff))
+matshow(fft_diff); colorbar(); title("fft diff")
+matshow(orig_diff); colorbar(); title("orig diff")
 
+sum(abs(fft_diff)) / sum(abs(orig_diff))
+mean(fft_diff)
+mean(orig_diff)
 
 ###################
 
