@@ -5,6 +5,8 @@ import Celeste: Infer, DeterministicVI, ParallelRun
 import Celeste: PSF, SDSSIO, SensitiveFloats, Transform
 import SensitiveFloats.clear!
 import SDSSIO: RunCamcolField
+import Celeste.DeterministicVIImagePSF
+import Celeste: CelesteEDA
 
 include(joinpath(Pkg.dir("Celeste"), "test", "Synthetic.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
@@ -12,10 +14,10 @@ include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 
-include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
+# include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
 include(joinpath(dir, "celeste_tools/celeste_tools.jl"))
 
-using ELBOPixelatedPSF
+# using DeterministicVIImagePSF
 
 import Synthetic
 using SampleData
@@ -71,23 +73,23 @@ Celeste.Infer.load_active_pixels!(ea_fft, exclude_nan=false);
 
 psf_image_mat = Matrix{Float64}[
     PSF.get_psf_at_point(ea.patches[s, b].psf) for s in 1:ea.S, b in 1:ea.N];
-fsm_vec = ELBOPixelatedPSF.FSMSensitiveFloatMatrices[
-    ELBOPixelatedPSF.FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
-ELBOPixelatedPSF.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
+fsm_vec = DeterministicVIImagePSF.FSMSensitiveFloatMatrices[
+    DeterministicVIImagePSF.FSMSensitiveFloatMatrices() for b in 1:ea_fft.N];
+DeterministicVIImagePSF.initialize_fsm_sf_matrices!(fsm_vec, ea_fft, psf_image_mat);
 
 function elbo_fft_opt{NumType <: Number}(
                     ea::ElboArgs{NumType};
                     calculate_derivs=true,
                     calculate_hessian=true)
     @assert ea.psf_K == 1
-    ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea, 2, fsm_vec);
+    DeterministicVIImagePSF.elbo_likelihood_with_fft!(ea, 2, fsm_vec);
     DeterministicVI.subtract_kl!(ea, elbo, calculate_derivs=calculate_derivs)
     return deepcopy(ea.elbo_vars.elbo)
 end
 
 # For compilation
 #include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
-ELBOPixelatedPSF.elbo_likelihood_with_fft!(ea_fft, 2, fsm_vec);
+DeterministicVIImagePSF.elbo_likelihood_with_fft!(ea_fft, 2, fsm_vec);
 
 ea_fft.elbo_vars.elbo
 
@@ -112,8 +114,8 @@ graph_vp[s][ids.a] = [1, 0]
 ea.vp = deepcopy(graph_vp)
 ea_fft.vp = deepcopy(graph_vp)
 
-image_fft = render_source_fft(ea, fsm_vec, s, n, include_iota=false, field=:E_G);
-image_orig = render_source(ea, s, n, include_iota=false, field=:E_G);
+image_fft = Celeste.CelesteEDA.render_source_fft(ea, fsm_vec, s, n, include_iota=false, field=:E_G);
+image_orig = Celeste.CelesteEDA.render_source(ea, s, n, include_iota=false, field=:E_G);
 
 PyPlot.close("all")
 matshow(image_fft); colorbar(); title("fft")
@@ -152,21 +154,20 @@ b = 3
 orig_pix_loc = source_pixel_location(ea, s, b)
 fft_pix_loc = source_pixel_location(ea_fft, s, b)
 
-
 PyPlot.close("all")
-matshow(render_source(ea_fft, s, b));
+matshow(CelesteEDA.render_source(ea_fft, s, b));
 plot(fft_pix_loc[1] - 1, fft_pix_loc[2] - 1, "ro"); colorbar();
 title("fft rendered")
 
-matshow(render_source(ea, s, b));
+matshow(CelesteEDA.render_source(ea, s, b));
 plot(orig_pix_loc[1] - 1, orig_pix_loc[2] - 1, "ro"); colorbar();
 title("orig rendered")
 
-matshow(show_source_image(ea, s, b)); colorbar(); title("original")
+matshow(CelesteEDA.show_source_image(ea, s, b)); colorbar(); title("original")
 fft_diff = show_source_image(ea, s, b) - render_source(ea_fft, s, b);
 fft_diff[isnan(fft_diff)] = 0;
 
-orig_diff = show_source_image(ea, s, b) - render_source(ea, s, b);
+orig_diff = CelesteEDA.show_source_image(ea, s, b) - render_source(ea, s, b);
 orig_diff[isnan(orig_diff)] = 0;
 
 matshow(fft_diff); colorbar(); title("fft diff")
@@ -187,7 +188,7 @@ gal_mcs_vec = Array(Array{GalaxyCacheComponent{Float64}, 4}, ea.N);
 # for b=1:ea.N
 b = 3
 s = 1
-gal_mcs_vec[b] = ELBOPixelatedPSF.load_gal_bvn_mixtures(
+gal_mcs_vec[b] = DeterministicVIImagePSF.load_gal_bvn_mixtures(
         ea.S, ea.patches, ea.vp, ea.active_sources, b,
         calculate_derivs=ea.elbo_vars.calculate_derivs,
         calculate_hessian=ea.elbo_vars.calculate_hessian);
@@ -223,7 +224,7 @@ e_angle = sp[lidx.e_angle]
 e_scale = sp[lidx.e_scale]
 
 import Celeste.DeterministicVI.BvnComponent
-gal_mcs = ELBOPixelatedPSF.load_gal_bvn_mixtures(
+gal_mcs = DeterministicVIImagePSF.load_gal_bvn_mixtures(
         ea.S, ea.patches, ea.vp, ea.active_sources, b,
         calculate_derivs=ea.elbo_vars.calculate_derivs,
         calculate_hessian=ea.elbo_vars.calculate_hessian);
@@ -238,9 +239,9 @@ sig_sf = GalaxySigmaDerivs(e_angle, e_axis, e_scale, XiXi, true)
 GalaxyCacheComponent(e_dev_dir, e_dev_i, bmc, sig_sf)
 
 
-using ELBOPixelatedPSF.populate_star_fsm_image!
-using ELBOPixelatedPSF.populate_gal_fsm_image!
-using ELBOPixelatedPSF.populate_source_band_brightness!
+using DeterministicVIImagePSF.populate_star_fsm_image!
+using DeterministicVIImagePSF.populate_gal_fsm_image!
+using DeterministicVIImagePSF.accumulate_source_image_brightness!
 
 n = 3
 fsms = fsm_vec[n]
@@ -250,7 +251,7 @@ for s in 1:ea.S
         ea, s, n, fsms.psf_vec[s], fsms.fs0m_conv,
         fsms.h_lower, fsms.w_lower, lanczos_width)
     populate_gal_fsm_image!(ea, s, n, gal_mcs, fsms)
-    populate_source_band_brightness!(ea, s, n, fsms, sbs[s])
+    accumulate_source_image_brightness!(ea, s, n, fsms, sbs[s])
 end
 
 [ sf.d[1] for sf in fsms.fs1m_conv ]
@@ -271,7 +272,7 @@ fsms.E_G[h_fsm, w_fsm].d
 # Debugging
 # populate_star_fsm_image!(ea, elbo_vars, s, b, fsms.psf_vec[s], fsms.fs0m_conv, lanczos_width)
 # populate_gal_fsm_image!(ea, elbo_vars, s, b, gal_mcs_vec[b], fsms)
-# populate_source_band_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
+# accumulate_source_image_brightness!(ea, elbo_vars, s, b, fsms, sbs[s])
 
 
 PyPlot.close("all")
@@ -348,7 +349,7 @@ star_mcs_fft, gal_mcs_fft =
 ###############
 # Debugging
 # Look at fsm.
-populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec);
+debug_populate_fsm_vec!(ea_fft, elbo_vars_fft, fsm_vec);
 s = ea.active_sources[1]
 
 PyPlot.close("all")
