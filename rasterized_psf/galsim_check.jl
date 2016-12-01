@@ -10,8 +10,13 @@ psf = make_psf();
 extensions, wcs = read_fits(galsim_filename);
 @assert length(extensions) % 5 == 0 # one extension per band for each test case
 
-test_case_index = 1
+for test_case_index in 1:div(length(extensions), 5)
+    first_band_index = (test_case_index - 1) * 5 + 1
+    println(test_case_index, " ",
+            extensions[first_band_index].header["CL_DESCR"])
+end
 
+test_case_index = 10
 first_band_index = (test_case_index - 1) * 5 + 1
 header = extensions[first_band_index].header
 this_test_case_name = header["CL_DESCR"]
@@ -86,7 +91,17 @@ vp_opt_fft = deepcopy(ea_fft.vp[1])
 
 #############
 # Print
-print_params(vp_opt_fft)
+
+star_galaxy_index = header["CL_TYPE1"] == "star" ? 1 : 2
+comp_df = GalsimBenchmark.get_expected_dataframe(header);
+comp_df[:orig] = GalsimBenchmark.actual_values(ids, star_galaxy_index, vp_opt)
+comp_df[:fft] = GalsimBenchmark.actual_values(ids, star_galaxy_index, vp_opt_fft)
+comp_df[:orig_diff] = (comp_df[:orig] - comp_df[:expected]) ./ comp_df[:expected]
+comp_df[:fft_diff] = (comp_df[:fft] - comp_df[:expected]) ./ comp_df[:expected]
+
+using DataFrames
+df = DataFrame(ids=ids_names, vp_fft=vp_opt_fft, vp_orig=vp_opt)
+
 
 #############
 # Check that each is finding its respective optimum
@@ -96,10 +111,11 @@ ea_fft_check.vp[1] = deepcopy(vp_opt);
 ea_fft.vp[1] = vp_opt_fft;
 println("FFT improvement:")
 elbo_fft_opt(ea_fft).v[] - elbo_fft_opt(ea_fft_check).v[]
+elbo_fft_opt(ea_fft).v[]
 
 ea_check = deepcopy(ea);
 ea_check.vp[1] = deepcopy(vp_opt_fft);
 ea.vp[1] = deepcopy(vp_opt);
 println("Ordinary improvement:")
 DeterministicVI.elbo(ea).v[] - DeterministicVI.elbo(ea_check).v[]
-
+DeterministicVI.elbo(ea).v[]
