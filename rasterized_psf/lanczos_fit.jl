@@ -12,6 +12,8 @@ include(joinpath(Pkg.dir("Celeste"), "test", "Synthetic.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
+using DataFrames
+
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 
 # include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
@@ -68,18 +70,31 @@ ea = ElboArgs(images, deepcopy(vp), patches, [1]);
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft,
                                verbose=true, max_iters=200);
+vp_opt_fft = deepcopy(ea_fft.vp[1]);
 
 f_evals, max_f, max_x, nm_result =
     DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
+vp_opt = deepcopy(ea.vp[1]);
 
 max_f_fft
 max_f
+
+df = DataFrame(ids=ids_names, vp_fft=vp_opt_fft, vp_orig=vp_opt,
+               pdiff=(vp_opt_fft - vp_opt) ./ vp_opt)
+
 
 ############################
 # Render
 
 s = 1
 b = 5
+
+vp_render = deepcopy(vp[s]);
+vp_render[ids.a] = [0, 1];
+ea.vp[s] = deepcopy(vp_render);
+ea_fft.vp[s] = deepcopy(vp_render);
+df = DataFrame(ids=ids_names, vp_fft=ea_fft.vp[s], vp_orig=ea.vp[s]);
+df[:pdiff] = (df[:vp_fft] - df[:vp_orig]) ./ df[:vp_orig];
 
 orig_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea, s, b)
 fft_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea_fft, s, b)
@@ -102,17 +117,15 @@ title("orig rendered")
 
 matshow(raw_image, vmin=0, vmax=vmax); colorbar(); title("raw image")
 
-
-fft_diff = CelesteEDA.show_source_image(ea, s, b) -
-           CelesteEDA.render_source(ea_fft, s, b);
+fft_diff = fft_rendered - raw_image;
 fft_diff[isnan(fft_diff)] = 0;
 
-orig_diff = CelesteEDA.show_source_image(ea, s, b) -
-            CelesteEDA.render_source(ea, s, b);
+orig_diff = orig_rendered - raw_image;
 orig_diff[isnan(orig_diff)] = 0;
 
 matshow(fft_diff); colorbar(); title("fft residuals")
 matshow(orig_diff); colorbar(); title("orig residuals")
+matshow(fft_rendered - orig_rendered); colorbar(); title("fft - orig")
 
 sum(abs(fft_diff)) / sum(abs(orig_diff))
 mean(fft_diff)
