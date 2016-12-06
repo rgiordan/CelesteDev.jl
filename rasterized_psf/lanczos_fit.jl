@@ -57,16 +57,20 @@ ea = ElboArgs(images, vp, patches, [1]);
 
 
 ######################
-# Optimize
+# Set initial parameters
+
+lanczos_width = 3
 
 # For now set this to false so we are comparing apples to apples
 use_raw_psf = false
 ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp), patches, [1], use_raw_psf=use_raw_psf);
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 3);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(
+    ea_fft, fsm_vec, lanczos_width);
 
 ea = ElboArgs(images, deepcopy(vp), patches, [1]);
 
+#######################
 # Optimize
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft,
@@ -105,7 +109,8 @@ b = 3
 orig_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea, s, b)
 fft_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea_fft, s, b)
 
-fft_rendered = CelesteEDA.render_source_fft(ea_fft, fsm_vec, s, b);
+fft_rendered = CelesteEDA.render_source_fft(
+    ea_fft, fsm_vec, s, b, lanczos_width=lanczos_width);
 orig_rendered = CelesteEDA.render_source(ea, s, b);
 raw_image = CelesteEDA.show_source_image(ea, s, b);
 vmax = maximum([ maximum(fft_rendered), 
@@ -146,7 +151,8 @@ PyPlot.close("all")
 s = 1
 for b in 1:5
     orig_psf = Celeste.PSF.get_psf_at_point(ea.patches[s, b].psf);
-    matshow(fsm_vec[b].psf_vec[s] - orig_psf); colorbar(); title(b)
+    # matshow(fsm_vec[b].psf_vec[s] - orig_psf); colorbar(); title(b)
+    matshow(fsm_vec[b].psf_vec[s]); colorbar(); title(b)
 end
 
 
@@ -174,3 +180,81 @@ elbo_time = time() - elbo_time
 
 println("Time ratio: ", elbo_time / current_elbo_time)
 
+
+
+###########################
+# GSL derivative Check
+
+using GSL
+
+ea_fft.vp = deepcopy(vp);
+ea.vp = deepcopy(vp);
+
+x_ind = 1
+fft_elbo = true
+function elbo_component(x::Float64, calculate_derivs::Bool)
+    if fft_elbo
+        ea_fft.vp[1][x_ind] = x
+        return elbo_fft_opt(ea_fft, calculate_derivs=calculate_derivs)
+    else
+        ea.vp[1][x_ind] = x
+        return DeterministicVI.elbo(ea)        
+    end
+end
+
+function elbo_component_val(x::Float64)
+    return elbo_component(x, false).v[]
+end
+
+
+# Test the gradients
+diffs = fill(NaN, length(ea_fft.vp[1]));
+for x_ind in 1:length(ea_fft.vp[1])
+    val = ea_fft.vp[1][x_ind]
+    result, abserr = deriv_central(elbo_component_val, val, 1e-8)
+    elbo = elbo_component(val, true);
+    diffs[x_ind] = (elbo.d[x_ind] - result + 1e-6) / (result + 1e-6)
+    println(ids_names[x_ind], ": ", diffs[x_ind])
+end
+
+df = DataFrame(names=ids_names, diffs=diffs)
+
+
+x_grad_ind = 1
+function elbo_component_grad_val(x::Float64)
+    return elbo_component(x, false).d[x_grad_ind, 1]
+end
+
+
+# Test the gradients
+n = length(ea_fft.vp[1]);
+result_mat = fill(NaN, n, n);
+for x_ind in 1:n
+    println(x_ind)
+    val = ea_fft.vp[1][x_ind]
+    elbo = elbo_component(val, true);
+    for x_grad_ind in 1:n
+        print(".")
+        result, abserr = deriv_central(elbo_component_grad_val, val, 1e-8)
+        result_mat[x_ind, x_grad_ind] = result
+    end
+    println("Done.")
+end
+
+elbo = DeterministicVI.elbo(ea);
+elbo_fft = elbo_fft_opt(ea_fft, calculate_derivs=true);
+
+eigvals(elbo.h)
+eigvals(elbo_fft.h)
+
+function condition_number(mat)
+    ev = eigvals(mat)
+    return maximum(abs(ev)) / minimum(abs(ev))
+end
+
+condition_number(elbo.h)
+condition_number(elbo_fft.h)
+
+diff = (result_mat - elbo_fft.h) ./ (result_mat  + 1e-6);
+x_ind, y_ind = ind2sub(size(result_mat), find(abs(diff) .> 0.01))
+hcat(ids_names[x_ind], ids_names[y_ind])

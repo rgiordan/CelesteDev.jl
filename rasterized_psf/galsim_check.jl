@@ -29,10 +29,10 @@ extensions, wcs = read_fits(galsim_filename);
 # There are 24 test cases per psf size.
 print_test_names(extensions)
 
-psf_size_ind = 3
+psf_size_ind = 2
 images, patches, vp, header = load_test_case(10 + (psf_size_ind - 1) * 24);
 # images, patches, vp, header = load_test_case(1);
-vp[1][ids.a] = [0.8, 0.2]
+# vp[1][ids.a] = [1, 0]
 
 # matshow(images[1].pixels); colorbar()
 ea = ElboArgs(images, deepcopy(vp), patches, [1]);
@@ -42,9 +42,11 @@ ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
 
 #############################
 # Check the initial points, which should be very similar.
+lanczos_width = 3
 
 b = 3
-fft_rendered = CelesteEDA.render_source_fft(ea_fft, fsm_vec, 1, b, include_epsilon=false);
+fft_rendered = CelesteEDA.render_source_fft(
+    ea_fft, fsm_vec, 1, b, include_epsilon=false, lanczos_width=lanczos_width);
 orig_rendered = CelesteEDA.render_source(ea, 1, b, include_epsilon=false);
 raw_image = CelesteEDA.show_source_image(ea, 1, b);
 fft_rendered[isnan(fft_rendered)] = 0;
@@ -56,6 +58,22 @@ ols_df = DataFrame(orig=orig_rendered[:], fft=fft_rendered[:]);
 glm(orig ~ fft, ols_df, Normal(), IdentityLink())
 # plot(orig_rendered[:], fft_rendered[:], "k.");  plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
 
+# Hessians
+
+function condition_number(mat)
+    ev = eigvals(mat)
+    return maximum(abs(ev)) / minimum(abs(ev))
+end
+
+elbo = DeterministicVI.elbo(ea);
+
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(
+    ea_fft, fsm_vec, lanczos_width);
+elbo_fft = elbo_fft_opt(ea_fft);
+
+condition_number(elbo.h)
+condition_number(elbo_fft.h)
+
 ################
 # Optimize
 
@@ -63,7 +81,8 @@ f_evals, max_f, max_x, nm_result =
     DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
 vp_opt = deepcopy(ea.vp[1]);
 
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 2);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(
+    ea_fft, fsm_vec, lanczos_width);
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, verbose=true);
 vp_opt_fft = deepcopy(ea_fft.vp[1]);
@@ -104,6 +123,7 @@ ea.vp[1] = deepcopy(vp_opt);
 println("Ordinary improvement:")
 DeterministicVI.elbo(ea).v[] - DeterministicVI.elbo(ea_check).v[]
 DeterministicVI.elbo(ea).v[]
+
 
 
 ############################
@@ -165,5 +185,40 @@ for b in 1:5
     orig_psf = Celeste.PSF.get_psf_at_point(ea.patches[s, b].psf);
     # matshow(fsm_vec[b].psf_vec[s] - orig_psf); colorbar(); title(b)
     matshow(fsm_vec[b].psf_vec[s]); colorbar(); title(b)
+end
+
+
+
+###########################
+# Use the unit test to check out the Lanczos interpolation
+
+import Celeste: SensitiveFloats.zero_sensitive_float_array
+using Base.Test
+
+psf_image = zeros(Float64, 5, 5);
+psf_image[3, 3] = 0.5
+psf_image[2, 3] = psf_image[3, 2] = psf_image[4, 3] = psf_image[3, 4] = 0.125
+
+wcs_jacobian = Float64[0.9 0.2; 0.1 0.8]
+world_loc = Float64[5.1, 5.2]
+lanczos_width = 3
+
+image_size = (11, 11)
+function lanczos_interpolate_loc{T <: Number}(
+    world_loc::Vector{T}, calculate_gradient::Bool)
+    local image = zero_sensitive_float_array(T, length(StarPosParams), 1,
+                                                        image_size...)
+    local pixel_loc = Celeste.Model.linear_world_to_pix(
+        wcs_jacobian, Float64[0., 0.], Float64[1.0, 0.5], world_loc)
+    DeterministicVIImagePSF.lanczos_interpolate!(
+        image, psf_image, pixel_loc, lanczos_width, wcs_jacobian,
+        calculate_gradient, calculate_gradient)
+    return image
+end
+
+for eps1 in 0:0.2:2, eps2 in 0:0.2:2
+    world_loc = Float64[5 + eps1, 5 + eps2]
+    image = lanczos_interpolate_loc(world_loc, true)
+    println(sum([ sf.v[] for sf in image ]))
 end
 
