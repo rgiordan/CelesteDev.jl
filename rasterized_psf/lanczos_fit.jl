@@ -63,10 +63,11 @@ ea = ElboArgs(images, vp, patches, [1]);
 use_raw_psf = false
 ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp), patches, [1], use_raw_psf=use_raw_psf);
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 2);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 3);
 
 ea = ElboArgs(images, deepcopy(vp), patches, [1]);
 
+# Optimize
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft,
                                verbose=true, max_iters=200);
@@ -82,19 +83,24 @@ max_f
 df = DataFrame(ids=ids_names, vp_fft=vp_opt_fft, vp_orig=vp_opt,
                pdiff=(vp_opt_fft - vp_opt) ./ vp_opt)
 
+# There is evidently an optimization problem with the FFT stuff.
+[ tr.metadata["delta"] for tr in nm_result_fft.trace ]
+[ tr.metadata["delta"] for tr in nm_result.trace ]
+
 
 ############################
 # Render
 
 s = 1
-b = 5
+b = 3
 
-vp_render = deepcopy(vp[s]);
-vp_render[ids.a] = [0, 1];
-ea.vp[s] = deepcopy(vp_render);
-ea_fft.vp[s] = deepcopy(vp_render);
-df = DataFrame(ids=ids_names, vp_fft=ea_fft.vp[s], vp_orig=ea.vp[s]);
-df[:pdiff] = (df[:vp_fft] - df[:vp_orig]) ./ df[:vp_orig];
+# Set parameters to view if you want to
+# vp_render = deepcopy(vp[s]);
+# vp_render[ids.a] = [0, 1];
+# ea.vp[s] = deepcopy(vp_render);
+# ea_fft.vp[s] = deepcopy(vp_render);
+# df = DataFrame(ids=ids_names, vp_fft=ea_fft.vp[s], vp_orig=ea.vp[s]);
+# df[:pdiff] = (df[:vp_fft] - df[:vp_orig]) ./ df[:vp_orig];
 
 orig_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea, s, b)
 fft_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea_fft, s, b)
@@ -116,6 +122,7 @@ plot(orig_pix_loc[1] - 1, orig_pix_loc[2] - 1, "ro"); colorbar();
 title("orig rendered")
 
 matshow(raw_image, vmin=0, vmax=vmax); colorbar(); title("raw image")
+matshow(raw_image); colorbar(); title("raw image")
 
 fft_diff = fft_rendered - raw_image;
 fft_diff[isnan(fft_diff)] = 0;
