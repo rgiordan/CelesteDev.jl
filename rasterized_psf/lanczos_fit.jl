@@ -74,7 +74,9 @@ ea = ElboArgs(images, deepcopy(vp), patches, [1]);
 # Optimize
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft,
-                               verbose=true, max_iters=200);
+                               verbose=true, max_iters=100,
+                               loc_scale=1e2,
+                               loc_width=5e-3);
 vp_opt_fft = deepcopy(ea_fft.vp[1]);
 
 f_evals, max_f, max_x, nm_result =

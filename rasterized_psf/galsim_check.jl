@@ -222,3 +222,7 @@ for eps1 in 0:0.2:2, eps2 in 0:0.2:2
     println(sum([ sf.v[] for sf in image ]))
 end
 
+
+################################
+# Scale the transform?
+

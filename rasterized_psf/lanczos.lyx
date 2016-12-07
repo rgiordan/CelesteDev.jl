@@ -185,7 +185,76 @@ L\left(x;a\right) & =\sinc\left(x\right)\sinc\left(\frac{x}{a}\right)\mathbb{I}\
 \end_layout
 
 \begin_layout Standard
-With these in hand you can easily calculate 
+Here is the behavior at 
+\begin_inset Formula $x=0$
+\end_inset
+
+:
+\begin_inset Formula 
+\begin{align*}
+\lim_{x\rightarrow0}\sinc x & =\lim_{x\rightarrow0}\frac{\sin\pi x}{\pi x}=\lim_{x\rightarrow0}\frac{\pi\cos x}{\pi}=1
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Note that since 
+\begin_inset Formula $\sinc$
+\end_inset
+
+ is not formally defined at 
+\begin_inset Formula $0$
+\end_inset
+
+ you need to use L'Hopital's rule carefully to calculate the derivatives
+ at 
+\begin_inset Formula $0$
+\end_inset
+
+.
+\begin_inset Formula 
+\begin{align*}
+\sinc'\left(0\right) & =\lim_{x\rightarrow0}\frac{\sinc\left(x\right)-\sinc\left(-x\right)}{2x}\\
+ & =\lim_{x\rightarrow0}\frac{\sin\left(\pi x\right)-\sin\left(-\pi x\right)}{2\pi x^{2}}\\
+ & =\lim_{x\rightarrow0}\frac{\pi\cos\left(\pi x\right)-\pi\cos\left(-\pi x\right)}{4\pi x}\\
+ & =\lim_{x\rightarrow0}\pi\frac{-\sin\left(\pi x\right)+\sin\left(-\pi x\right)}{4}\\
+ & =0\\
+\sinc''\left(0\right) & =\lim_{x\rightarrow0}\frac{\pi\frac{\cos\pi x-\sinc x}{\pi x}}{2x}\\
+ & =\lim_{x\rightarrow0}\frac{\cos\pi x-\sinc x}{2x^{2}}\\
+ & =\lim_{x\rightarrow0}\frac{-\pi\sin x-\frac{\sinc\left(x\right)-\sinc\left(-x\right)}{2x}}{4x}\\
+ & =\lim_{x\rightarrow0}\frac{-\pi2x\sin x-\sinc\left(x\right)+\sinc\left(-x\right)}{8x^{2}}\\
+ & =\lim_{x\rightarrow0}\frac{-\pi2x\sin x-\sinc\left(x\right)+\sinc\left(x\right)}{8x^{2}}\textrm{ (symmetry of }\sinc\textrm{)}\\
+ & =\lim_{x\rightarrow0}\frac{-\pi\sin x}{4x}\\
+ & =-\frac{\pi}{4}\textrm{ (not checked carefully -- importantly, it's fininte)}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+This is surprising since
+\begin_inset Formula 
+\begin{align*}
+\sinc x & =\frac{\sin\pi x}{\pi x}\\
+ & =\frac{1}{\pi x}\left(\pi x-\frac{1}{3!}\left(\pi x\right)^{3}+\frac{1}{5!}\left(\pi x\right)^{5}-\frac{1}{7!}\left(\pi x\right)^{7}\right)\\
+ & =1-\frac{1}{3!}\left(\pi x\right)^{2}+\frac{1}{5!}\left(\pi x\right)^{4}-\frac{1}{7!}\left(\pi x\right)^{6}...\\
+\sinc'x & =-\frac{2\pi}{3!}\pi x+\frac{4\pi}{5!}\left(\pi x\right)^{3}-\frac{6\pi}{7!}\left(\pi x\right)^{5}+...\\
+\sinc''x & =-\frac{2\pi^{2}}{3!}+\frac{4\cdot3\pi^{2}}{5!}\pi x-\frac{6\cdot5}{7!}\left(\pi x\right)^{4}+...
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+...which is symmetric.
+ With these in hand you can easily calculate 
 \begin_inset Formula 
 \begin{align*}
 \frac{dp}{d\mu} & \textrm{ and }\frac{d^{2}p}{d\mu d\mu^{T}}
