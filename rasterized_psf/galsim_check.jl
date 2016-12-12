@@ -13,6 +13,12 @@ using Celeste.CelesteEDA
 using PyPlot
 using DataFrames
 
+
+function condition_number(mat)
+    ev = eigvals(mat)
+    return maximum(abs(ev)) / minimum(abs(ev))
+end
+
 ############
 
 galsim_filename_orig =
@@ -38,41 +44,13 @@ images, patches, vp, header = load_test_case(10 + (psf_size_ind - 1) * 24);
 ea = ElboArgs(images, deepcopy(vp), patches, [1]);
 ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp), ea.patches, [1], use_raw_psf=false);
-
-
-#############################
-# Check the initial points, which should be very similar.
-lanczos_width = 3
-
-b = 3
-fft_rendered = CelesteEDA.render_source_fft(
-    ea_fft, fsm_vec, 1, b, include_epsilon=false, lanczos_width=lanczos_width);
-orig_rendered = CelesteEDA.render_source(ea, 1, b, include_epsilon=false);
-raw_image = CelesteEDA.show_source_image(ea, 1, b);
-fft_rendered[isnan(fft_rendered)] = 0;
-orig_rendered[isnan(orig_rendered)] = 0;
-
-# Note that galaxies are very close but stars are not.
-using(GLM)
-ols_df = DataFrame(orig=orig_rendered[:], fft=fft_rendered[:]);
-glm(orig ~ fft, ols_df, Normal(), IdentityLink())
-# plot(orig_rendered[:], fft_rendered[:], "k.");  plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
-
-# Hessians
-
-function condition_number(mat)
-    ev = eigvals(mat)
-    return maximum(abs(ev)) / minimum(abs(ev))
+for n in 1:ea_fft.N
+    fsm_vec[n].kernel_width = 2
+    # fsm_vec[n].kernel_fun =
+    #     x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, -0.75)
+    fsm_vec[n].kernel_fun =
+        x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)
 end
-
-elbo = DeterministicVI.elbo(ea);
-
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(
-    ea_fft, fsm_vec, lanczos_width);
-elbo_fft = elbo_fft_opt(ea_fft);
-
-condition_number(elbo.h)
-condition_number(elbo_fft.h)
 
 ################
 # Optimize
@@ -81,8 +59,7 @@ f_evals, max_f, max_x, nm_result =
     DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
 vp_opt = deepcopy(ea.vp[1]);
 
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(
-    ea_fft, fsm_vec, lanczos_width);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, verbose=true);
 vp_opt_fft = deepcopy(ea_fft.vp[1]);
@@ -107,6 +84,7 @@ df = DataFrame(ids=ids_names, vp_orig=vp_opt, vp_fft=vp_opt_fft,
                pdiff=(vp_opt_fft - vp_opt) ./ vp_opt);
 print(df)
 
+
 #############
 # Check that each is finding its respective optimum
 
@@ -124,6 +102,36 @@ println("Ordinary improvement:")
 DeterministicVI.elbo(ea).v[] - DeterministicVI.elbo(ea_check).v[]
 DeterministicVI.elbo(ea).v[]
 
+println("FFT over ordinary:")
+(elbo_fft_opt(ea_fft).v[] - DeterministicVI.elbo(ea).v[]) /
+    abs(DeterministicVI.elbo(ea).v[])
+
+#############################
+# Check the initial points, which should be very similar.
+
+b = 3
+ea_fft.vp = deepcopy(vp);
+ea.vp = deepcopy(vp);
+
+fft_rendered = CelesteEDA.render_source_fft(
+    ea_fft, fsm_vec, 1, b, include_epsilon=false);
+orig_rendered = CelesteEDA.render_source(ea, 1, b, include_epsilon=false);
+raw_image = CelesteEDA.show_source_image(ea, 1, b);
+fft_rendered[isnan(fft_rendered)] = 0;
+orig_rendered[isnan(orig_rendered)] = 0;
+
+# Note that galaxies are very close but stars are not.
+using(GLM)
+ols_df = DataFrame(orig=orig_rendered[:], fft=fft_rendered[:]);
+glm(orig ~ fft, ols_df, Normal(), IdentityLink())
+if false
+    plot(orig_rendered[:], fft_rendered[:], "k.");  plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
+end
+if false
+    plot(log(orig_rendered[:]), log(fft_rendered[:]), "k."); 
+    plot(log(orig_rendered[:]), log(orig_rendered[:]), "r."); 
+end
+
 
 
 ############################
@@ -139,6 +147,9 @@ b = 3
 # ea_fft.vp[s] = deepcopy(vp_render);
 # df = DataFrame(ids=ids_names, vp_fft=ea_fft.vp[s], vp_orig=ea.vp[s]);
 # df[:pdiff] = (df[:vp_fft] - df[:vp_orig]) ./ df[:vp_orig];
+
+ea_fft.vp[s] = deepcopy(vp_opt_fft);
+ea.vp[s] = deepcopy(vp_opt);
 
 orig_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea, s, b)
 fft_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea_fft, s, b)
@@ -222,7 +233,4 @@ for eps1 in 0:0.2:2, eps2 in 0:0.2:2
     println(sum([ sf.v[] for sf in image ]))
 end
 
-
-################################
-# Scale the transform?
 
