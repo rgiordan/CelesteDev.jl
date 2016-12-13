@@ -84,16 +84,19 @@ function render_optimization_steps(
 end
 
 
-function show_images(img_array)
-    iter = 0
-    max_pix = maximum([ maximum(img) for img in img_array ])
+function show_images(img_array, sleep_duration=0.03)
     PyPlot.close("all")
-    for img in img_array
-        PyPlot.close("all")
-        iter = iter + 1
-        matshow(img, vmin=0, vmax=max_pix);
-        title("rendered " * string(iter))
-        waitforbuttonpress()
+    PyPlot.hold(false)
+    max_pix = 1.1 * maximum([ maximum(img) for img in img_array ])
+    min_pix = minimum([ minimum(img) for img in img_array ])
+    for iter in 1:length(img_array)
+        im = img_array[iter]
+        imshow(im, interpolation="nearest", vmin=min_pix, vmax=max_pix)
+        if iter == 1
+            colorbar()
+        end
+        title("Iteration " * string(iter))
+        sleep(sleep_duration)
+        PyPlot.draw()
     end
 end
-
