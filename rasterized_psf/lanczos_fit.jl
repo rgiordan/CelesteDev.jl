@@ -45,7 +45,8 @@ for cat in catalog
     end
 end
 # objid = "1237663784734490677"
-objid = "1237663784734490643"
+#objid = "1237663784734490643"
+objid = "1237663784734490800"
 objids = [ce.objid for ce in catalog];
 sa = findfirst(objids, objid);
 neighbors = Infer.find_neighbors([sa], catalog, images)[1];
@@ -60,13 +61,13 @@ ea = ElboArgs(images, vp, patches, [1]);
 # Set initial parameters
 
 # For now set this to false so we are comparing apples to apples
-use_raw_psf = false
+use_raw_psf = true
 ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp), patches, [1], use_raw_psf=use_raw_psf);
 for n in 1:ea_fft.N
     fsm_vec[n].kernel_width = 2
     # fsm_vec[n].kernel_fun =
-    #     x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, 0.75)
+    #     x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, -0.75)
     fsm_vec[n].kernel_fun =
         x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)
 end
@@ -88,7 +89,12 @@ vp_opt = deepcopy(ea.vp[1]);
 
 max_f_fft
 max_f
+
+println("FFT ELBO improvement")
 (max_f_fft - max_f)  / abs(max_f)
+
+println("FFT Extra iterations")
+(nm_result_fft.iterations - nm_result.iterations) / nm_result.iterations
 
 df = DataFrame(ids=ids_names, vp_fft=vp_opt_fft, vp_orig=vp_opt,
                pdiff=(vp_opt_fft - vp_opt) ./ vp_opt)
@@ -109,11 +115,11 @@ images_fft, images_star_fft, images_gal_fft, vp_array_fft =
 images_orig, images_star_orig, images_gal_orig, vp_array_orig =
     render_optimization_steps(ea, nm_result, transform, s, b);
 
-show_images(images_star_fft)
-show_images(images_star_orig)
-
-show_images(images_gal_fft)
-show_images(images_gal_orig)
+# show_images(images_star_fft)
+# show_images(images_star_orig)
+# 
+# show_images(images_gal_fft)
+# show_images(images_gal_orig)
 
 show_images(images_fft)
 show_images(images_orig)
@@ -123,24 +129,31 @@ show_images(images_orig)
 PyPlot.figure()
 plot(1:length(images_star_fft), [ sum_nonnan(img) for img in images_star_fft], "b.")
 plot(1:length(images_gal_fft), [ sum_nonnan(img) for img in images_gal_fft], "r.")
+title("FFT brightness")
 
 PyPlot.figure()
 plot(1:length(vp_array_fft), [ vp[s][ids.a][1] for vp in vp_array_fft] )
+title("FFT a")
 
 PyPlot.figure()
 plot(1:length(nm_result_fft.trace), [ tr.value for tr in nm_result_fft.trace] )
+title("FFT ELBO")
 
 ############# orig
 
 PyPlot.figure()
 plot(1:length(images_star_orig), [ sum_nonnan(img) for img in images_star_orig], "b.")
 plot(1:length(images_gal_orig), [ sum_nonnan(img) for img in images_gal_orig], "r.")
+title("Orig brighntess")
 
 PyPlot.figure()
 plot(1:length(vp_array_orig), [ vp[s][ids.a][1] for vp in vp_array_orig] )
+title("Orig a")
 
 PyPlot.figure()
 plot(1:length(nm_result.trace), [ tr.value for tr in nm_result.trace] )
+title("Orig ELBO")
+
 
 
 ####################################

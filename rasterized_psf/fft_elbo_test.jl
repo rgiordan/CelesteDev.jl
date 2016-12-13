@@ -13,6 +13,7 @@ include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
 include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
+include(joinpath(dir, "rasterized_psf/eda_sandbox.jl"))
 
 import Synthetic
 using SampleData
@@ -75,21 +76,57 @@ function verify_sample_galaxy(vs, pos)
 end
 
 
-# images, ea, body = gen_sample_star_dataset();
-# ea.vp[1][ids.a[:, 1]] = [0.8, 0.2]
-# ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
-#     images, deepcopy(ea.vp), ea.patches, [s], use_raw_psf=false);
-# elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 1);
-# DeterministicVI.maximize_f(elbo_fft_opt, ea_fft; loc_width=1.0);
-# verify_sample_star(ea_fft.vp[1], [10.1, 12.2]);
-# 
-# 
-# images, ea, body = gen_sample_galaxy_dataset();
-# ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
-#     images, deepcopy(ea.vp), ea.patches, [s], use_raw_psf=false);
-# elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 2);
-# DeterministicVI.maximize_f(elbo_fft_opt, ea_fft; loc_width=1.0);
-# verify_sample_galaxy(ea_fft.vp[1], [8.5, 9.6]);
+images, ea, body = gen_sample_star_dataset();
+ea.vp[1][ids.a[:, 1]] = [0.8, 0.2]
+ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+    images, deepcopy(ea.vp), ea.patches, [1], use_raw_psf=false);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
+f_evals, max_f, max_x, nm_result, transform =
+    DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, loc_width=1.0,
+                               verbose=true, max_iters=500);
+verify_sample_star(ea_fft.vp[1], [10.1, 12.2]);
+
+images_fft, images_star_fft, images_gal_fft, vp_array_fft =
+    render_optimization_steps(ea_fft, fsm_vec, nm_result, transform, 1, 3);
+
+PyPlot.hold(false)
+# PyPlot.figure()
+PyPlot.close("all")
+for iter in 1:length(images_gal_fft)
+    im = images_fft[iter]
+    imshow(im, interpolation="nearest");
+    title("Iteration " * string(iter))
+    # println("Press q to quit, enter to continue:")
+    # keyval = readline(STDIN)
+    # println(keyval)
+    # if keyval[1] == 'q'
+    #     break
+    # end
+    sleep(0.03)
+    PyPlot.draw()
+end
+
+[vp[1][ids.a][1] for vp in vp_array_fft]
+plot(1:length(nm_result.trace), [ log10(tr.value) for tr in nm_result.trace ])
+plot(1:length(nm_result.trace), [ tr.metadata["delta"] for tr in nm_result.trace ])
+
+
+
+# Newton's method converges on a small galaxy unless we start with
+# a high star probability.
+ea.vp[1][ids.a[:, 1]] = [0.8, 0.2]
+f_evals0, max_f0, max_x0, nm_result0, transform0 =
+    DeterministicVI.maximize_f(DeterministicVI.elbo_likelihood, ea; loc_width=1.0)
+verify_sample_star(ea.vp[1], [10.1, 12.2])
+
+
+
+images, ea, body = gen_sample_galaxy_dataset();
+ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+    images, deepcopy(ea.vp), ea.patches, [s], use_raw_psf=false);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 2);
+DeterministicVI.maximize_f(elbo_fft_opt, ea_fft; loc_width=1.0);
+verify_sample_galaxy(ea_fft.vp[1], [8.5, 9.6]);
 
 
 s = 1
