@@ -1,0 +1,177 @@
+#LyX 2.2 created this file. For more info see http://www.lyx.org/
+\lyxformat 508
+\begin_document
+\begin_header
+\save_transient_properties true
+\origin unavailable
+\textclass article
+\use_default_options true
+\maintain_unincluded_children false
+\language english
+\language_package default
+\inputencoding auto
+\fontencoding global
+\font_roman "default" "default"
+\font_sans "default" "default"
+\font_typewriter "default" "default"
+\font_math "auto" "auto"
+\font_default_family default
+\use_non_tex_fonts false
+\font_sc false
+\font_osf false
+\font_sf_scale 100 100
+\font_tt_scale 100 100
+\graphics default
+\default_output_format default
+\output_sync 0
+\bibtex_command default
+\index_command default
+\paperfontsize default
+\use_hyperref false
+\papersize default
+\use_geometry false
+\use_package amsmath 1
+\use_package amssymb 1
+\use_package cancel 1
+\use_package esint 1
+\use_package mathdots 1
+\use_package mathtools 1
+\use_package mhchem 1
+\use_package stackrel 1
+\use_package stmaryrd 1
+\use_package undertilde 1
+\cite_engine basic
+\cite_engine_type default
+\biblio_style plain
+\use_bibtopic false
+\use_indices false
+\paperorientation portrait
+\suppress_date false
+\justification true
+\use_refstyle 1
+\index Index
+\shortcut idx
+\color #008000
+\end_index
+\secnumdepth 3
+\tocdepth 3
+\paragraph_separation indent
+\paragraph_indentation default
+\quotes_language english
+\papercolumns 1
+\papersides 1
+\paperpagestyle default
+\tracking_changes false
+\output_changes false
+\html_math_output 0
+\html_css_as_file 0
+\html_be_strict false
+\end_header
+
+\begin_body
+
+\begin_layout Standard
+We interpolate a signal 
+\begin_inset Formula $f$
+\end_inset
+
+ at 
+\begin_inset Formula $x$
+\end_inset
+
+ using
+\begin_inset Formula 
+\begin{align*}
+\hat{f}\left(x\right) & =\sum_{i=-\infty}^{\infty}f\left(x_{i}\right)k\left(x-x_{i}\right)
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+If we want it to have the same integral as the original function we require
+\begin_inset Formula 
+\begin{align*}
+\int\hat{f}\left(x\right)dx & =\sum_{i=-\infty}^{\infty}f\left(x_{i}\right)\int k\left(x-x_{i}\right)dx\\
+ & =\int k\left(x\right)dx\sum_{i=-\infty}^{\infty}f\left(x_{i}\right)\\
+ & =\int f\left(x\right)dx
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+For this we require something like 
+\begin_inset Formula $\int k\left(x\right)dx=\Delta x$
+\end_inset
+
+, the spacing between the points 
+\begin_inset Formula $x_{i}$
+\end_inset
+
+.
+\end_layout
+
+\begin_layout Standard
+Another way of looking at it is that if 
+\begin_inset Formula $f\left(x_{i}\right)=C\mathbb{I}_{A}$
+\end_inset
+
+, then
+\begin_inset Formula 
+\begin{align*}
+\int\hat{f}\left(x\right)dx & =C\sum_{x_{i}\in A}\int k\left(x-x_{i}\right)dx\\
+ & =CN_{A}\int k\left(x\right)dx\\
+ & =C\int\mathbb{I}_{A}dx\Rightarrow\\
+\int k\left(x\right)dx & =\frac{\int\mathbb{I}_{A}dx}{N_{A}}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Another way is for two grids, 
+\begin_inset Formula $x_{i}$
+\end_inset
+
+ and 
+\begin_inset Formula $\hat{x}_{j}$
+\end_inset
+
+, 
+\begin_inset Formula 
+\begin{align*}
+\sum_{i}f\left(x_{i}\right) & =\sum_{i}\hat{f}\left(\hat{x}_{i}\right)\Rightarrow\\
+\sum_{j}\hat{f}\left(\hat{x}_{j}\right) & =\sum_{j}\sum_{i}f\left(x_{i}\right)k\left(\hat{x}_{j}-x_{i}\right)\\
+ & =\sum_{i}f\left(x_{i}\right)\sum_{j}k\left(\hat{x}_{j}-x_{i}\right)\\
+ & =\sum_{i}f\left(x_{i}\right)\Rightarrow\\
+\sum_{j}k\left(\hat{x}_{j}-x_{i}\right) & =1\forall x_{i}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+To have a kernel that sums to one we can define
+\begin_inset Formula 
+\begin{align*}
+\hat{k}\left(x,x_{i}\right) & :=\frac{k\left(x,x_{i}\right)}{\sum_{j}k\left(x,x_{j}\right)}\\
+\frac{d\hat{k}\left(x,x_{i}\right)}{dx} & =\frac{k'\left(x,x_{i}\right)\sum_{j}k\left(x,x_{j}\right)-k\left(x,x_{i}\right)\sum_{j}k'\left(x,x_{j}\right)}{\left(\sum_{j}k\left(x,x_{j}\right)\right)^{2}}\\
+ & =\frac{k'\left(x,x_{i}\right)}{\sum_{j}k\left(x,x_{j}\right)}-\frac{\sum_{j}k'\left(x,x_{j}\right)}{\sum_{j}k\left(x,x_{j}\right)}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\end_body
+\end_document
