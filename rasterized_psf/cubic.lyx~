@@ -71,6 +71,15 @@
 \begin_body
 
 \begin_layout Standard
+\begin_inset FormulaMacro
+\newcommand{\mbi}{\mathbb{I}}
+{\mathbb{I}}
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
 We set
 \begin_inset Formula 
 \begin{align*}
@@ -96,12 +105,113 @@ f\left(1^{-}\right) & =f\left(1^{+}\right)\\
 f'\left(1^{-}\right) & =f'\left(1^{+}\right)\\
 f''\left(1^{-}\right) & =f''\left(1^{+}\right)\\
 f\left(2\right) & =0\\
-f'\left(2\right) & =0
+f'\left(2\right) & =0\\
+f''\left(2\right) & =0
 \end{align*}
 
 \end_inset
 
 
+\end_layout
+
+\begin_layout Standard
+These eight constraints should give all the coefficients.
+\begin_inset Formula 
+\begin{align*}
+a_{0} & =1\\
+b_{0} & =0
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right) & =\begin{cases}
+1+c_{0}x^{2}+d_{0}x^{3} & x\in[0,1)\\
+a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+1+c_{0}+d_{0} & =a_{1}+b_{1}+c_{1}+d_{1}\\
+2c_{0}+3d_{0} & =b_{1}+2c_{1}+3d_{1}\\
+2c_{0}+6d_{0} & =2c_{1}+6d_{1}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+and
+\begin_inset Formula 
+\begin{align*}
+a_{1}+2b_{1}+4c_{1}+8d_{1}\\
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+B splines always sum to one:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f^{\left(3\right)}\left(x\right) & =\mbi\left(-0.5\le x<0.5\right)\\
+f^{\left(k\right)}\left(x\right) & =\int f^{\left(k-1\right)}\left(x-s\right)f^{\left(k-1\right)}\left(s\right)ds\\
+\sum_{i}f^{\left(k\right)}\left(x_{i}\right) & =\sum_{i}\int f^{\left(k-1\right)}\left(x_{i}-s\right)f^{\left(k-1\right)}\left(s\right)ds\\
+ & =\int\sum_{i}f^{\left(k-1\right)}\left(x_{i}-s\right)f^{\left(k-1\right)}\left(s\right)ds\\
+ & =\int f^{\left(k-1\right)}\left(s\right)\left(\sum_{i}f^{\left(k-1\right)}\left(x_{i}-s\right)\right)ds
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Therefore, since
+\begin_inset Formula 
+\begin{align*}
+\sum_{i}f^{\left(3\right)}\left(x_{i}-s\right) & =1,\forall s\\
+\sum_{i}f^{\left(2\right)}\left(x_{i}\right) & =\int f^{\left(3\right)}\left(s\right)\left(\sum_{i}f^{\left(3\right)}\left(x_{i}-s\right)\right)ds\\
+ & =\int f^{\left(3\right)}\left(s\right)ds\\
+ & =1\textrm{ and }\\
+\int f^{\left(2\right)}\left(x\right)dx & =\int\int f^{\left(3\right)}\left(x-s\right)f^{\left(3\right)}\left(s\right)dsdx\\
+ & =\int f^{\left(3\right)}\left(s\right)ds\\
+ & =1\textrm{ which is true in general so}\\
+\sum_{i}f^{\left(k\right)}\left(x_{i}\right) & =\int f^{\left(k\right)}\left(s\right)\left(\sum_{i}f^{\left(k\right)}\left(x_{i}-s\right)\right)ds\\
+ & =\int f^{\left(k\right)}\left(s\right)ds
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Consequently, by induction for b splines we always have 
+\begin_inset Formula $\sum_{i}f^{\left(k\right)}\left(x_{i}\right)=1$
+\end_inset
+
+.
 \end_layout
 
 \end_body

@@ -21,7 +21,7 @@ end
 
 function render_optimization_steps(
     ea::Celeste.DeterministicVI.ElboArgs,
-    fsm_vec::Vector{Celeste.DeterministicVIImagePSF.FSMSensitiveFloatMatrices},
+    fsm_mat::Vector{Celeste.DeterministicVIImagePSF.FSMSensitiveFloatMatrices},
     nm_result::Optim.MultivariateOptimizationResults,
     transform::Celeste.Transform.DataTransform,
     s::Int, b::Int)
@@ -37,15 +37,15 @@ function render_optimization_steps(
         vp_loc = deepcopy(vp_array[iter])
 
         ea_fft.vp = vp_loc
-        push!(images, CelesteEDA.render_source_fft(ea, fsm_vec, s, b))
+        push!(images, CelesteEDA.render_source_fft(ea, fsm_mat, s, b))
 
         vp_loc[s][ids.a] = [ 1, 0 ]
         ea_fft.vp = vp_loc
-        push!(images_star, CelesteEDA.render_source_fft(ea, fsm_vec, s, b))
+        push!(images_star, CelesteEDA.render_source_fft(ea, fsm_mat, s, b))
 
         vp_loc[s][ids.a] = [ 0, 1 ]
         ea_fft.vp = vp_loc
-        push!(images_gal, CelesteEDA.render_source_fft(ea, fsm_vec, s, b))
+        push!(images_gal, CelesteEDA.render_source_fft(ea, fsm_mat, s, b))
     end
 
     return images, images_star, images_gal, vp_array

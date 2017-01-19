@@ -46,15 +46,36 @@ for cat in catalog
 end
 # objid = "1237663784734490677"
 #objid = "1237663784734490643"
+objids = [ cat.objid for cat in catalog ];
 objid = "1237663784734490800"
-objids = [ce.objid for ce in catalog];
 sa = findfirst(objids, objid);
 neighbors = Infer.find_neighbors([sa], catalog, images)[1];
 cat_local = vcat(catalog[sa], catalog[neighbors]);
-vp = Vector{Float64}[Celeste.Infer.init_source(ce) for ce in cat_local];
-patches = Celeste.Infer.get_sky_patches(images, cat_local);
-Celeste.Infer.load_active_pixels!(images, patches; exclude_nan=false);
-ea = ElboArgs(images, vp, patches, [1]);
+vp = DeterministicVI.init_sources([1], cat_local)
+patches = Infer.get_sky_patches(images, cat_local);
+
+ea = ElboArgs(images, deepcopy(vp), patches, [1]);
+Celeste.Infer.load_active_pixels!(ea.images, ea.patches);
+
+ea_fft = ElboArgs(images, deepcopy(vp), patches, [1], psf_K=1);
+Celeste.Infer.load_active_pixels!(ea_fft.images, ea.patches; exclude_nan=false);
+
+psf_image_mat = Matrix{Float64}[
+    PSF.get_psf_at_point(ea.patches[s, b].psf) for s in 1:ea_fft.S, b in 1:ea_fft.N];
+fsm_mat = DeterministicVIImagePSF.FSMSensitiveFloatMatrices[
+    DeterministicVIImagePSF.FSMSensitiveFloatMatrices() for
+    s in 1:ea_fft.S, b in 1:ea_fft.N];
+DeterministicVIImagePSF.initialize_fsm_sf_matrices!(fsm_mat, ea_fft, psf_image_mat);
+
+s = 1
+n = 3
+
+image_fft = CelesteEDA.render_source_fft(ea, fsm_mat, s, n, include_iota=false, field=:E_G);
+image_orig = CelesteEDA.render_source(ea, s, n, include_iota=false, field=:E_G);
+
+PyPlot.close("all")
+matshow(image_fft); colorbar(); title("fft Celeste")
+matshow(image_orig); colorbar(); title("original Celeste")
 
 
 ######################
@@ -62,16 +83,16 @@ ea = ElboArgs(images, vp, patches, [1]);
 
 # For now set this to false so we are comparing apples to apples
 use_raw_psf = true
-ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp), patches, [1], use_raw_psf=use_raw_psf);
-for n in 1:ea_fft.N
-    fsm_vec[n].kernel_width = 2
-    # fsm_vec[n].kernel_fun =
-    #     x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, -0.75)
-    fsm_vec[n].kernel_fun =
-        x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)
+for s in 1:ea_fft.S, n in 1:ea_fft.N
+    fsm_mat[s, n].kernel_width = 2
+    fsm_mat[s, n].kernel_fun =
+        x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, 0.0)
+    # fsm_mat[n].kernel_fun =
+    #     x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)
 end
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
 
 ea = ElboArgs(images, deepcopy(vp), patches, [1]);
 
@@ -96,8 +117,8 @@ println("FFT ELBO improvement")
 println("FFT Extra iterations")
 (nm_result_fft.iterations - nm_result.iterations) / nm_result.iterations
 
-df = DataFrame(ids=ids_names, vp_fft=vp_opt_fft, vp_orig=vp_opt,
-               pdiff=(vp_opt_fft - vp_opt) ./ vp_opt)
+# df = DataFrame(ids=ids_names, vp_fft=vp_opt_fft, vp_orig=vp_opt,
+#                pdiff=(vp_opt_fft - vp_opt) ./ vp_opt)
 
 
 ##############################
@@ -110,7 +131,7 @@ s = 1
 b = 3
 
 images_fft, images_star_fft, images_gal_fft, vp_array_fft =
-    render_optimization_steps(ea_fft, fsm_vec, nm_result_fft, transform_fft, s, b);
+    render_optimization_steps(ea_fft, fsm_mat, nm_result_fft, transform_fft, s, b);
 
 images_orig, images_star_orig, images_gal_orig, vp_array_orig =
     render_optimization_steps(ea, nm_result, transform, s, b);
@@ -239,7 +260,7 @@ b = 3
 orig_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea, s, b)
 fft_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea_fft, s, b)
 
-fft_rendered = CelesteEDA.render_source_fft(ea_fft, fsm_vec, s, b);
+fft_rendered = CelesteEDA.render_source_fft(ea_fft, fsm_mat, s, b);
 orig_rendered = CelesteEDA.render_source(ea, s, b);
 raw_image = CelesteEDA.show_source_image(ea, s, b);
 vmax = maximum([ maximum(fft_rendered), 
@@ -280,8 +301,8 @@ PyPlot.close("all")
 s = 1
 for b in 1:5
     orig_psf = Celeste.PSF.get_psf_at_point(ea.patches[s, b].psf);
-    # matshow(fsm_vec[b].psf_vec[s] - orig_psf); colorbar(); title(b)
-    matshow(fsm_vec[b].psf_vec[s]); colorbar(); title(b)
+    # matshow(fsm_mat[b].psf_vec[s] - orig_psf); colorbar(); title(b)
+    matshow(fsm_mat[b].psf_vec[s]); colorbar(); title(b)
 end
 
 
@@ -296,10 +317,10 @@ elbo = Celeste.DeterministicVI.elbo(ea);
 current_elbo_time = time() - current_elbo_time
 
 
-ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp), patches, [1]);
 
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 2);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat, 2);
 
 elbo_fft = elbo_fft_opt(ea_fft);
 

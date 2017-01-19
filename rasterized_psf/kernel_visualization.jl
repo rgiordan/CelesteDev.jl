@@ -34,5 +34,22 @@ for cubic_a in Float64[ -2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2]
 end
 
 
+kernel_fun = x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, 0.)[1]
+#kernel_fun = x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)[1]
+#kernel_fun = x -> DeterministicVIImagePSF.lanczos_kernel_with_derivatives(x, 2.)[1]
+
+kernel_width = 2
+for x in 0:0.01:1
+    x0_vals = (-kernel_width:(kernel_width - 1)) + x
+    k_vec = [ kernel_fun(x0) for x0 in x0_vals ]
+    println(k_vec, " ", sum(k_vec))
+end
+
+DeterministicVIImagePSF.cubic_kernel_with_derivatives(1.999, 0.2)
+DeterministicVIImagePSF.bspline_kernel_with_derivatives(1.999)
+
+
+
+
 
 # okok 

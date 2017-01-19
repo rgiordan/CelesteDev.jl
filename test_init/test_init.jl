@@ -36,7 +36,7 @@ tile_source_map = ea.tile_source_map[b][1, 1]
 star_mcs, gal_mcs =
     DeterministicVI.load_bvn_mixtures(ea, b, calculate_derivs=true)
 elbo_vars = DeterministicVI.ElboIntermediateVariables(Float64, ea.S, ea.S)
-DeterministicVI.populate_fsm_vecs!(
+DeterministicVI.populate_fsm_mats!(
     elbo_vars, ea, tile_source_map, tile, h, w, gal_mcs, star_mcs)
 
 fs0m = zero_sensitive_float(StarPosParams, Float64)

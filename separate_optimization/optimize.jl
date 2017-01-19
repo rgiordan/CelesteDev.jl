@@ -16,17 +16,8 @@ using DataFrames
 
 const dir = "/home/rgiordan/Documents/git_repos/CelesteDev.jl/"
 
-# include(joinpath(dir, "rasterized_psf/elbo_pixelated_psf.jl"))
-# include(joinpath(dir, "celeste_tools/celeste_tools.jl"))
-
-# using DeterministicVIImagePSF
-
-import Synthetic
-using SampleData
-
 using Base.Test
 using Distributions
-
 using PyPlot
 
 
@@ -62,55 +53,47 @@ ea = ElboArgs(images, vp, patches, [1]);
 
 # For now set this to false so we are comparing apples to apples
 use_raw_psf = true
-ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
-    images, deepcopy(vp), deepcopy(patches), [1], use_raw_psf=use_raw_psf);
-for n in 1:ea_fft.N
-    fsm_vec[n].kernel_width = 2
-    # fsm_vec[n].kernel_fun =
-    #     x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, -0.75)
-    fsm_vec[n].kernel_fun =
-        x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)
-end
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
+ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+    images, deepcopy(vp), patches, [1], use_raw_psf=use_raw_psf);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
 
 ea = ElboArgs(images, deepcopy(vp), patches, [1]);
-
-
-# ##################
-# # Trim PSF
-
-
-elbo_fft_opt(ea_fft);
-fft_time = time()
-elbo_fft_opt(ea_fft);
-fft_time = time() - fft_time
-
-DeterministicVI.elbo(ea);
-orig_time = time()
-DeterministicVI.elbo(ea);
-orig_time = time() - orig_time
-
-println("FFT extra time:")
-(fft_time - orig_time) / orig_time
-
 
 
 #######################
 # Optimize
 
-fft_time = time()
+gal_only_ids_free = vcat(ids_free.e_dev, ids_free.e_axis,
+                    ids_free.e_angle, ids_free.e_scale,
+                    ids_free.r1[2], ids_free.r2[2],
+                    ids_free.c1[:, 2][:], ids_free.c2[:, 2][:],
+                    ids_free.k[:, 2][:])
+
+star_only_ids_free = vcat(ids_free.r1[1], ids_free.r2[1],
+                     ids_free.c1[:, 1][:], ids_free.c2[:, 1][:],
+                     ids_free.k[:, 1][:])
+
+
+gal_only_ids = vcat(ids.e_dev, ids.e_axis, ids.e_angle, ids.e_scale,
+                 ids.r1[2], ids.r2[2],
+                 ids.c1[:, 2][:], ids.c2[:, 2][:],
+                 ids.k[:, 2][:])
+
+star_only_ids = vcat(ids.r1[1], ids.r2[1],
+                  ids.c1[:, 1][:], ids.c2[:, 1][:],
+                  ids.k[:, 1][:])
+
+
+ea_fft.vp[1][ids.a] = [1, 0]
 f_evals_fft, max_f_fft, max_x_fft, nm_result_fft, transform_fft =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft,
+                               omitted_ids=[1],
                                verbose=true, max_iters=100);
-fft_time = time() - fft_time
 vp_opt_fft = deepcopy(ea_fft.vp[1]);
 
-orig_time = time()
 f_evals, max_f, max_x, nm_result, transform =
     DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
-orig_time = time() - orig_time
 vp_opt = deepcopy(ea.vp[1]);
-
 
 max_f_fft
 max_f
@@ -120,13 +103,3 @@ println("FFT ELBO improvement")
 
 println("FFT Extra iterations")
 (nm_result_fft.iterations - nm_result.iterations) / nm_result.iterations
-
-df = DataFrame(ids=ids_names, vp_fft=vp_opt_fft, vp_orig=vp_opt,
-               pdiff=(vp_opt_fft - vp_opt) ./ vp_opt)
-
-
-
-
-
-
-

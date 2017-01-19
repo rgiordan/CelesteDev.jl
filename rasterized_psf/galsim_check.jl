@@ -1,17 +1,21 @@
 using Celeste: Infer, DeterministicVI, Model
 
+using Celeste.GalsimBenchmark:
+    make_psf, make_catalog, read_fits, assert_counts_match_expected_flux,
+    make_images, make_catalog
+
 current_path = joinpath(ENV["GIT_REPO_LOC"], "CelesteDev.jl/rasterized_psf")
-include(joinpath(Pkg.dir("Celeste"), "benchmark/galsim/GalsimBenchmark.jl"))
+# include(joinpath(Pkg.dir("Celeste"), "src/GalsimBenchmark.jl"))
 include(joinpath(current_path, "galsim_lib.jl"))
 
-using GalsimBenchmark:
-    make_psf, read_fits, assert_counts_match_expected_flux,
-    make_images, make_catalog_entries, benchmark_comparison_data
+using Celeste.ParallelRun: one_node_single_infer
 
 using Celeste.DeterministicVIImagePSF
 using Celeste.CelesteEDA
 using PyPlot
 using DataFrames
+
+
 
 
 function condition_number(mat)
@@ -21,84 +25,104 @@ end
 
 ############
 
-galsim_filename_orig =
-    joinpath(Pkg.dir("Celeste"),
-             "benchmark/galsim/output/galsim_test_images.fits")
-galsim_filename = joinpath(current_path, "galsim_test_images_more_psf.fits")
+const GALSIM_BENCHMARK_DIR = joinpath(Pkg.dir("Celeste"), "benchmark", "galsim")
+const LATEST_FITS_FILENAME_HOLDER = joinpath(
+    GALSIM_BENCHMARK_DIR, "latest_filenames", "latest_galsim_benchmarks.txt")
 
-# extensions, wcs = read_fits(galsim_filename_orig);
-extensions, wcs = read_fits(galsim_filename);
+latest_fits_filename = Celeste.GalsimBenchmark.get_latest_fits_filename("galsim_benchmarks")
+extensions, wcs = read_fits(joinpath(GALSIM_BENCHMARK_DIR, "output", latest_fits_filename));
+
 @assert length(extensions) % 5 == 0 # one extension per band for each test case
 
-# PSF sizes are in this order:
-# 0.2, 0.5, 1, 1.5, and 2.
-# There are 24 test cases per psf size.
-print_test_names(extensions)
+catalog, target_sources, neighbor_map, images, header = load_test_case(2);
+header["CLDESCR"]
+ts = target_sources[1]
 
-psf_size_ind = 2
-images, patches, vp, header = load_test_case(10 + (psf_size_ind - 1) * 24);
-# images, patches, vp, header = load_test_case(1);
-# vp[1][ids.a] = [1, 0]
+s = target_sources[ts]
+entry = catalog[s]
 
-# matshow(images[1].pixels); colorbar()
-ea = ElboArgs(images, deepcopy(vp), patches, [1]);
-ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
-    images, deepcopy(vp), ea.patches, [1], use_raw_psf=false);
-for n in 1:ea_fft.N
-    fsm_vec[n].kernel_width = 2
-    # fsm_vec[n].kernel_fun =
-    #     x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, -0.75)
-    fsm_vec[n].kernel_fun =
-        x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)
+# could subset images to images_local here too.
+neighbors = catalog[neighbor_map[ts]]
+
+cat_local = vcat([entry], neighbors);
+vp_init = init_sources([1], cat_local);
+patches = Celeste.Infer.get_sky_patches(images, cat_local);
+Celeste.Infer.load_active_pixels!(images, patches);
+
+
+# Fit the original
+ea = ElboArgs(images, deepcopy(vp_init), patches, [1]);
+f_evals, max_f, max_x, nm_result =
+    Celeste.DeterministicVI.maximize_f(
+        Celeste.DeterministicVI.elbo, ea, verbose=true, max_iters=200);
+vp_opt = deepcopy(ea.vp);
+
+
+# Fit the FFT.
+# Initialize 
+ea_fft, fsm_mat = initialize_fft_elbo_parameters(
+    images, deepcopy(vp_init), patches, [1], use_raw_psf=false);
+# Initialize at the other other optimum
+# ea_fft, fsm_mat = initialize_fft_elbo_parameters(
+#     images, deepcopy(vp_opt), patches, [1], use_raw_psf=false);
+elbo_fft_opt = get_fft_elbo_function(ea_fft, fsm_mat);
+
+f_evals, max_f, max_x, nm_result_fft, transform =
+    Celeste.DeterministicVI.maximize_f(
+        elbo_fft_opt, ea_fft, verbose=true, max_iters=200);
+vp_opt_fft = deepcopy(ea_fft.vp);
+
+#############################
+# Compare to ground truth
+
+comparison_dataframe = Celeste.GalsimBenchmark.get_ground_truth_dataframe(header);
+star_galaxy_index = header["CLTYP001"] == "star" ? 1 : 2
+comparison_dataframe[:fft] =
+Celeste.GalsimBenchmark.inferred_values(star_galaxy_index, ea_fft.vp[1]);
+comparison_dataframe[:mog] =
+    Celeste.GalsimBenchmark.inferred_values(star_galaxy_index, ea.vp[1]);
+
+# exp(ea_fft.vp[1][ids.r1[star_galaxy_index]] + 0.5 * ea_fft.vp[1][ids.r2[star_galaxy_index]])
+# exp(ea.vp[1][ids.r1[star_galaxy_index]] + 0.5 * ea.vp[1][ids.r2[star_galaxy_index]])
+
+for col in [ "fft", "mog" ]
+    comparison_dataframe[Symbol(col * "_perr")] =
+        (comparison_dataframe[Symbol(col)] .-
+         comparison_dataframe[:ground_truth]) ./
+        comparison_dataframe[:ground_truth]
 end
 
-################
-# Optimize
+comparison_dataframe
 
-f_evals, max_f, max_x, nm_result =
-    DeterministicVI.maximize_f(DeterministicVI.elbo, ea, verbose=true);
-vp_opt = deepcopy(ea.vp[1]);
+using Celeste.CelesteEDA.print_vp
+vp_opt_df = print_vp(vp_opt[1]);
+vp_opt_df[:vp_fft] = vp_opt_fft[1];
+vp_opt_df
 
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
-f_evals_fft, max_f_fft, max_x_fft, nm_result_fft =
-    DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, verbose=true);
-vp_opt_fft = deepcopy(ea_fft.vp[1]);
 
-#############
-# Print
+#######################
+# NM diagnostics
 
-# Check the TR sizes.
-[ tr.metadata["delta"] for tr in nm_result_fft.trace ]
-[ tr.metadata["delta"] for tr in nm_result.trace ]
-
-star_galaxy_index = header["CL_TYPE1"] == "star" ? 1 : 2
-comp_df = GalsimBenchmark.get_expected_dataframe(header);
-comp_df[:orig] = GalsimBenchmark.actual_values(ids, star_galaxy_index, vp_opt);
-comp_df[:fft] = GalsimBenchmark.actual_values(ids, star_galaxy_index, vp_opt_fft);
-comp_df[:orig_diff] = (comp_df[:orig] - comp_df[:expected]) ./ comp_df[:expected];
-comp_df[:fft_diff] = (comp_df[:fft] - comp_df[:expected]) ./ comp_df[:expected];
-print(comp_df)
-
-using DataFrames
-df = DataFrame(ids=ids_names, vp_orig=vp_opt, vp_fft=vp_opt_fft,
-               pdiff=(vp_opt_fft - vp_opt) ./ vp_opt);
-print(df)
-
+elbo = [ tr.value for tr in nm_result.trace ];
+x = reduce(hcat, [ tr.metadata["x"] for tr in nm_result.trace ]);
+gr = reduce(hcat, [ tr.metadata["g(x)"] for tr in nm_result.trace ]);
+h = nm_result.trace[end].metadata["h(x)"];
+delta = [ tr.metadata["delta"] for tr in nm_result.trace ];
 
 #############
 # Check that each is finding its respective optimum
 
 ea_fft_check = deepcopy(ea_fft);
-ea_fft_check.vp[1] = deepcopy(vp_opt);
-ea_fft.vp[1] = vp_opt_fft;
-println("FFT improvement:")
+ea_fft_check.vp[1] = deepcopy(vp_opt[1]);
+ea_fft.vp[1] = deepcopy(vp_opt_fft[1]);
+println("FFT improvement (should be positive):")
 elbo_fft_opt(ea_fft).v[] - elbo_fft_opt(ea_fft_check).v[]
 elbo_fft_opt(ea_fft).v[]
 
 ea_check = deepcopy(ea);
-ea_check.vp[1] = deepcopy(vp_opt_fft);
-ea.vp[1] = deepcopy(vp_opt);
-println("Ordinary improvement:")
+ea_check.vp[1] = deepcopy(vp_opt_fft[1]);
+ea.vp[1] = deepcopy(vp_opt[1]);
+println("Ordinary improvement (should be positive):")
 DeterministicVI.elbo(ea).v[] - DeterministicVI.elbo(ea_check).v[]
 DeterministicVI.elbo(ea).v[]
 
@@ -106,26 +130,45 @@ println("FFT over ordinary:")
 (elbo_fft_opt(ea_fft).v[] - DeterministicVI.elbo(ea).v[]) /
     abs(DeterministicVI.elbo(ea).v[])
 
+
 #############################
-# Check the initial points, which should be very similar.
+# Check the same value, which should be very similar.
+
+import Celeste.CelesteEDA.print_vp
 
 b = 3
-ea_fft.vp = deepcopy(vp);
-ea.vp = deepcopy(vp);
+same_vp = deepcopy(vp_opt_fft);
+ea_fft.vp = deepcopy(same_vp); ea.vp = deepcopy(same_vp);
 
 fft_rendered = CelesteEDA.render_source_fft(
-    ea_fft, fsm_vec, 1, b, include_epsilon=false);
-orig_rendered = CelesteEDA.render_source(ea, 1, b, include_epsilon=false);
+    ea_fft, fsm_mat, 1, b, include_epsilon=true, include_iota=true);
+orig_rendered = CelesteEDA.render_source(
+    ea, 1, b, include_epsilon=true, include_iota=true);
 raw_image = CelesteEDA.show_source_image(ea, 1, b);
 fft_rendered[isnan(fft_rendered)] = 0;
 orig_rendered[isnan(orig_rendered)] = 0;
+
+# matshow(raw_image); colorbar(); title("raw")
+# matshow(fft_rendered); colorbar(); title("fft")
+# matshow(orig_rendered); colorbar(); title("orig")
+
+PyPlot.close("all")
+plot(orig_rendered[:], fft_rendered[:], "k.");
+plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
+PyPlot.close("all")
+plot(raw_image[:], fft_rendered[:], "k."); 
+plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
+PyPlot.close("all")
+plot(raw_image[:], orig_rendered[:], "k.");
+plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
 
 # Note that galaxies are very close but stars are not.
 using(GLM)
 ols_df = DataFrame(orig=orig_rendered[:], fft=fft_rendered[:]);
 glm(orig ~ fft, ols_df, Normal(), IdentityLink())
 if false
-    plot(orig_rendered[:], fft_rendered[:], "k.");  plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
+    plot(orig_rendered[:], fft_rendered[:], "k.");
+    plot(maximum(fft_rendered[:]), maximum(fft_rendered[:]), "ro")
 end
 if false
     plot(log(orig_rendered[:]), log(fft_rendered[:]), "k."); 
@@ -154,7 +197,7 @@ ea.vp[s] = deepcopy(vp_opt);
 orig_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea, s, b)
 fft_pix_loc = Celeste.CelesteEDA.source_pixel_location(ea_fft, s, b)
 
-fft_rendered = CelesteEDA.render_source_fft(ea_fft, fsm_vec, s, b);
+fft_rendered = CelesteEDA.render_source_fft(ea_fft, fsm_mat, s, b);
 orig_rendered = CelesteEDA.render_source(ea, s, b);
 raw_image = CelesteEDA.show_source_image(ea, s, b);
 vmax = maximum([ maximum(fft_rendered), 
@@ -194,8 +237,8 @@ PyPlot.close("all")
 s = 1
 for b in 1:5
     orig_psf = Celeste.PSF.get_psf_at_point(ea.patches[s, b].psf);
-    # matshow(fsm_vec[b].psf_vec[s] - orig_psf); colorbar(); title(b)
-    matshow(fsm_vec[b].psf_vec[s]); colorbar(); title(b)
+    # matshow(fsm_mat[b].psf_vec[s] - orig_psf); colorbar(); title(b)
+    matshow(fsm_mat[b].psf_vec[s]); colorbar(); title(b)
 end
 
 

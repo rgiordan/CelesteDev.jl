@@ -47,23 +47,23 @@ s = 1
 b = 3
 
 images, ea, body = gen_sample_galaxy_dataset();
-ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
   images, deepcopy(ea.vp), ea.patches, [s], use_raw_psf=false);
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
 
 ea_debug = deepcopy(ea_fft);
 vp_set = deepcopy(ea.vp);
 vp_set[1][ids.a] = [0.5, 0.5]
 ea_debug.vp = deepcopy(vp_set);
-DeterministicVIImagePSF.debug_populate_fsm_vec!(ea_debug, fsm_vec, 2);
+DeterministicVIImagePSF.debug_populate_fsm_mat!(ea_debug, fsm_mat, 2);
 
 # The expectation is decoupled but the variance is not.
-CelesteEDA.print_vp(fsm_vec[1].E_G[10,10].d[:, 1])
-fsm_vec[1].E_G[10,10].d[star_only_ids]
-fsm_vec[1].E_G[10,10].h[star_only_ids, gal_only_ids]
-fsm_vec[1].var_G[10,10].h[star_only_ids, gal_only_ids]
+CelesteEDA.print_vp(fsm_mat[1].E_G[10,10].d[:, 1])
+fsm_mat[1].E_G[10,10].d[star_only_ids]
+fsm_mat[1].E_G[10,10].h[star_only_ids, gal_only_ids]
+fsm_mat[1].var_G[10,10].h[star_only_ids, gal_only_ids]
 
-# h = fsm_vec[1].E_G[9,10].h;
+# h = fsm_mat[1].E_G[9,10].h;
 elbo_fft_opt(ea_fft);
 h = ea_fft.elbo_vars.elbo.h;
 eigvals, eigvecs = eig(h);
@@ -90,9 +90,9 @@ function test_two_body()
     images, ea, bodies = gen_two_body_dataset();
     s = 1
 
-    ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+    ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
         images, deepcopy(ea.vp), ea.patches, [s], use_raw_psf=false);
-    elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec, 2);
+    elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat, 2);
     elbo_fft_opt(ea_fft);
     f_evals, max_f, max_x, nm_result = DeterministicVI.maximize_f(elbo_fft_opt, ea_fft);
 end
@@ -145,9 +145,9 @@ s = 1
 b = 3
 
 images, ea, body = gen_sample_galaxy_dataset();
-ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(ea.vp), ea.patches, [s], use_raw_psf=false);
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
 f_evals, max_f, max_x, nm_result, transform =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft; loc_width=3.0, verbose=true);
 vp_opt = deepcopy(ea_fft.vp);
@@ -156,7 +156,7 @@ brightness_vals, brightness_squares = DeterministicVI.get_brightness(ea_fft)
 brightness_vals[1][3, 2] / sample_galaxy_fluxes[3]
 
 images_fft, images_star_fft, images_gal_fft, vp_array_fft =
-    render_optimization_steps(ea_fft, fsm_vec, nm_result, transform, 1, 3);
+    render_optimization_steps(ea_fft, fsm_mat, nm_result, transform, 1, 3);
 
 images_resid = [ im - images[3].pixels for im in images_fft ];
 show_images(images_resid)
@@ -203,26 +203,26 @@ ea_debug = deepcopy(ea_fft);
 vp_set = deepcopy(vp_opt);
 vp_set[1][ids.a] = [0, 1]
 ea_debug.vp = deepcopy(vp_set);
-DeterministicVIImagePSF.debug_populate_fsm_vec!(ea_debug, fsm_vec, 2);
+DeterministicVIImagePSF.debug_populate_fsm_mat!(ea_debug, fsm_mat, 2);
 
 # The expectation is decoupled but the variance is not.
 # Am I crazy?  If a[1] = 0, shouldn't the derivatives with respect to the
 # star ids be zero?
-CelesteEDA.print_vp(fsm_vec[1].E_G[10,10].d[:, 1])
-fsm_vec[1].E_G[10,10].d[star_only_ids]
-fsm_vec[1].E_G[10,10].h[star_only_ids, gal_only_ids]
-fsm_vec[1].var_G[10,10].h[star_only_ids, gal_only_ids]
+CelesteEDA.print_vp(fsm_mat[1].E_G[10,10].d[:, 1])
+fsm_mat[1].E_G[10,10].d[star_only_ids]
+fsm_mat[1].E_G[10,10].h[star_only_ids, gal_only_ids]
+fsm_mat[1].var_G[10,10].h[star_only_ids, gal_only_ids]
 
 # The contribution from the log term correction is so small...
-E_G_mat = [ sf.v[] for sf in fsm_vec[b].E_G ];
-var_G_mat = [ sf.v[] for sf in fsm_vec[b].var_G ];
+E_G_mat = [ sf.v[] for sf in fsm_mat[b].E_G ];
+var_G_mat = [ sf.v[] for sf in fsm_mat[b].var_G ];
 log_term_mat = 0.5 * var_G_mat ./ (E_G_mat .^ 2);
 
 
 vp_set = deepcopy(vp_opt);
 vp_set[1][ids.a] = [0.5, 0.5]
 ea_debug.vp = deepcopy(vp_set);
-DeterministicVIImagePSF.elbo_likelihood_with_fft!(ea_debug, fsm_vec);
+DeterministicVIImagePSF.elbo_likelihood_with_fft!(ea_debug, fsm_mat);
 avg_frobenius_norm(ea_debug.elbo_vars.elbo.h[star_only_ids, star_only_ids])
 avg_frobenius_norm(ea_debug.elbo_vars.elbo.h[gal_only_ids, gal_only_ids])
 avg_frobenius_norm(ea_debug.elbo_vars.elbo.h[gal_only_ids, star_only_ids])
@@ -234,20 +234,20 @@ avg_frobenius_norm(ea_debug.elbo_vars.elbo.h[gal_only_ids, star_only_ids])
 
 images, ea, body = gen_sample_star_dataset();
 ea.vp[1][ids.a[:, 1]] = [0.8, 0.2]
-ea_fft, fsm_vec = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
+ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(ea.vp), ea.patches, [1], use_raw_psf=false);
-for n in 1:length(fsm_vec)
-    fsm_vec[n].kernel_fun =
+for n in 1:length(fsm_mat)
+    fsm_mat[n].kernel_fun =
         x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, -0.75)
 end
-elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_vec);
+elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
 f_evals, max_f, max_x, nm_result, transform =
     DeterministicVI.maximize_f(elbo_fft_opt, ea_fft, loc_width=1.0,
                                verbose=true, max_iters=500);
 verify_sample_star(ea_fft.vp[1], [10.1, 12.2]);
 
 images_fft, images_star_fft, images_gal_fft, vp_array_fft =
-    render_optimization_steps(ea_fft, fsm_vec, nm_result, transform, 1, 3);
+    render_optimization_steps(ea_fft, fsm_mat, nm_result, transform, 1, 3);
 
 
 # img_array = [ images_fft[iter] - images[3].pixels for iter in 1:length(images_fft) ];
@@ -302,7 +302,7 @@ images_orig, images_star_orig, images_gal_orig, vp_array_orig =
 
 
 
-image_fft = CelesteEDA.render_source_fft(ea_fft, fsm_vec, s, b, include_epsilon=false);
+image_fft = CelesteEDA.render_source_fft(ea_fft, fsm_mat, s, b, include_epsilon=false);
 image_orig = CelesteEDA.render_source(ea, s, b, include_epsilon=false);
 
 # They are off by a constant factor.

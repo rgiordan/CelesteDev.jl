@@ -165,7 +165,7 @@ To have a kernel that sums to one we can define
 \begin{align*}
 \hat{k}\left(x,x_{i}\right) & :=\frac{k\left(x,x_{i}\right)}{\sum_{j}k\left(x,x_{j}\right)}\\
 \frac{d\hat{k}\left(x,x_{i}\right)}{dx} & =\frac{k'\left(x,x_{i}\right)\sum_{j}k\left(x,x_{j}\right)-k\left(x,x_{i}\right)\sum_{j}k'\left(x,x_{j}\right)}{\left(\sum_{j}k\left(x,x_{j}\right)\right)^{2}}\\
- & =\frac{k'\left(x,x_{i}\right)}{\sum_{j}k\left(x,x_{j}\right)}-\frac{\sum_{j}k'\left(x,x_{j}\right)}{\sum_{j}k\left(x,x_{j}\right)}
+ & =\frac{k'\left(x,x_{i}\right)}{\sum_{j}k\left(x,x_{j}\right)}-\frac{\sum_{j}k'\left(x,x_{j}\right)}{\sum_{j}k\left(x,x_{j}\right)}\hat{k}\left(x,x_{i}\right)
 \end{align*}
 
 \end_inset
