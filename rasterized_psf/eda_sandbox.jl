@@ -100,3 +100,17 @@ function show_images(img_array, sleep_duration=0.03)
         PyPlot.draw()
     end
 end
+
+
+function render_sources_fft(
+    ea::ElboArgs,
+    fsm_mat::Matrix{FSMSensitiveFloatMatrices},
+    sources::Vector{Int}, n::Int;
+    include_epsilon=true,
+    field=:E_G, include_iota=true)
+
+    # Get empty image
+    for s in sources:
+        # Render and add
+    end
+end
