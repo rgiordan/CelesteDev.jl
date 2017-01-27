@@ -23,66 +23,6 @@ import Celeste.Infer: load_active_pixels!, get_sky_patches, is_pixel_in_patch,
     get_active_pixel_range
 
 
-
-images, ea, two_body = SampleData.gen_two_body_dataset(perturb=false);
-patches = Infer.get_sky_patches(images, two_body; radius_override_pix=50);
-Infer.load_active_pixels!(
-    images, patches, noise_fraction=Inf, min_radius_pix=Nullable(10));
-n = 3
-
-using Base.Test
-img_1 = CelesteEDA.render_sources(ea, [1], n, include_epsilon=false, include_iota=false);
-img_2 = CelesteEDA.render_sources(ea, [2], n, include_epsilon=false, include_iota=false);
-img_12 = CelesteEDA.render_sources(ea, [1, 2], n, include_epsilon=false, include_iota=false);
-@test_approx_eq_eps(maximum(abs(img_12 - img_1 - img_2)), 0.0, 1e-12)
-
-ea_fft = DeterministicVIImagePSF.ElboArgs(
-    images, deepcopy(ea.vp), patches, collect(1:ea.S), psf_K=1);
-psf_image_mat = Matrix{Float64}[
-    PSF.get_psf_at_point(patches[s, b].psf) for s in 1:ea_fft.S, b in 1:ea_fft.N];
-fsm_mat = DeterministicVIImagePSF.FSMSensitiveFloatMatrices[
-    DeterministicVIImagePSF.FSMSensitiveFloatMatrices() for
-    s in 1:ea_fft.S, b in 1:ea_fft.N];
-DeterministicVIImagePSF.initialize_fsm_sf_matrices!(fsm_mat, ea_fft, psf_image_mat);
-
-fft_img_1 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [1], n, include_epsilon=false, include_iota=false);
-fft_img_2 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [2], n, include_epsilon=false, include_iota=false);
-fft_img_12 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [1, 2], n, include_epsilon=false, include_iota=false);
-@test_approx_eq_eps(maximum(abs(fft_img_12 - fft_img_1 - fft_img_2)), 0.0, 1e-12)
-
-full_img_12 = CelesteEDA.render_sources(ea, [1, 2], n, include_epsilon=true, include_iota=true);
-full_fft_img_12 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [1, 2], n, include_epsilon=true, include_iota=true);
-orig_img_12 = CelesteEDA.show_sources_image(ea, [1, 2], n);
-
-# Check that the two images are roughly the same, and roughly the same as the original..
-@test median(abs(full_fft_img_12 - full_img_12)) / maximum(abs(full_img_12)) < 0.01
-@test median(abs(full_fft_img_12 - orig_img_12)) / maximum(abs(orig_img_12)) < 0.02
-
-
-
-file_dir = joinpath(Pkg.dir("Celeste"), "benchmark/stripe82")
-
-res = JLD.load(joinpath(file_dir, "results_and_errors_fft_twostep_200117.jld"));
-
-celeste_df = res["celeste_df"];
-coadd_df = res["coadd_df"];
-res["celeste_err"]
-
-comb_df =
-    hcat(celeste_df[:, [:objid, :is_star, :star_mag_r, :gal_mag_r]],
-         coadd_df[:, [:objid, :is_star, :star_mag_r, :gal_mag_r]]);
-
-both_star = (celeste_df[:is_star] .> 0.5) & coadd_df[:is_star]
-both_gal = (celeste_df[:is_star] .< 0.5) & (!coadd_df[:is_star])
-gal_err = abs(celeste_df[:gal_mag_r] .- coadd_df[:gal_mag_r])
-
-comb_df[both_gal & (gal_err .> 5), :]
-
-PyPlot.close("all")
-plot(comb_df[both_gal, :gal_mag_r_1], comb_df[both_gal, :gal_mag_r], "k+")
-plot(maximum(comb_df[both_gal, :gal_mag_r_1]), maximum(comb_df[both_gal, :gal_mag_r_1]), "ro")
-
-
 # Load images
 const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
 rcf = Celeste.SDSSIO.RunCamcolField(4263, 5,119);
@@ -91,7 +31,8 @@ catalog = SDSSIO.read_photoobj_files([rcf], datadir, duplicate_policy=:first);
 objids = [ cat.objid for cat in catalog ];
 
 # Pick a source and optimize
-objid = "1237663784734490824"
+# objid = "1237663784734490824"
+objid = "1237663784734490632" # Bounds error object
 target_sources =  [ findfirst(objids, objid) ];
 neighbor_map = Infer.find_neighbors(target_sources, catalog, images);
 
@@ -110,6 +51,29 @@ load_active_pixels!(images, patches);
 ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp_init), patches, [1], use_raw_psf=false);
 elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
+
+n = 3
+image_fft = CelesteEDA.render_sources_fft(
+    ea_fft, fsm_mat, [ 1, 2 ], n,
+    include_iota=true, include_epsilon=true, field=:E_G);
+valid_pixels = render_valid_pixels(ea_fft, [1, 2], n)
+
+PyPlot.close("all")
+matshow(image_fft); colorbar()
+
+raw_image = CelesteEDA.show_sources_image(ea_fft, [1, 2], n);
+matshow(raw_image); colorbar()
+
+elbo_fft_opt(ea_fft);
+
+
+
+
+
+
+
+
+
 f_evals, max_f, max_x, nm_result, transform =
     maximize_f_two_steps(elbo_fft_opt, ea_fft, verbose=true);
 vp_opt = deepcopy(ea_fft.vp);
