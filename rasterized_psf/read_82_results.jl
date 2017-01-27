@@ -23,16 +23,47 @@ import Celeste.Infer: load_active_pixels!, get_sky_patches, is_pixel_in_patch,
     get_active_pixel_range
 
 
+#############################
+# Load stripe82 results.
+
+stripe82_dir = joinpath(Pkg.dir("Celeste"), "benchmark/stripe82/")
+stripe_82_results = JLD.load(joinpath(stripe82_dir, "results_and_errors_small_box_fft-004263-5-0119.jld"))
+
+keep_cols = [:objid, :is_star, :gal_mag_r, :star_mag_r ]
+results = hcat(stripe_82_results["celeste_df"][keep_cols],
+               stripe_82_results["coadd_df"][keep_cols])
+results[:gal_mag_error] = results[:gal_mag_r] - results[:gal_mag_r_1] 
+both_gal = (results[:is_star] .< 0.5) & !results[:is_star_1]
+foo = (results[both_gal, :])
+sort!(foo, cols=:gal_mag_error)
+
+stripe_82_results["celeste_err"]
+
+#########################
 # Load images
+
 const datadir = joinpath(Pkg.dir("Celeste"), "test", "data")
 rcf = Celeste.SDSSIO.RunCamcolField(4263, 5,119);
 images = Celeste.SDSSIO.load_field_images(rcf, datadir);
 catalog = SDSSIO.read_photoobj_files([rcf], datadir, duplicate_policy=:first);
 objids = [ cat.objid for cat in catalog ];
 
+# Get the RA, DEC coordinates of the box.
+for n in 1:length(images)
+    println(n)
+    println(WCS.pix_to_world(images[n].wcs, Float64[1., 1.]))
+    println(WCS.pix_to_world(images[n].wcs, Float64[images[n].H, 1]))
+    println(WCS.pix_to_world(images[n].wcs, Float64[1., images[n].W]))
+    println(WCS.pix_to_world(images[n].wcs, Float64[images[n].H, images[n].W]))
+end
+
 # Pick a source and optimize
-# objid = "1237663784734490824"
-objid = "1237663784734490632" # Bounds error object
+#coadd_objid = 8647474692482139458
+# coadd_objid = 8647474692482138819
+# objid = convert(String, stripe_82_results["celeste_df"][stripe_82_results["coadd_df"][:objid] .== coadd_objid, :objid][1])
+
+objid = "1237663784734491701"
+
 target_sources =  [ findfirst(objids, objid) ];
 neighbor_map = Infer.find_neighbors(target_sources, catalog, images);
 
@@ -49,46 +80,25 @@ patches = get_sky_patches(images, cat_local);
 load_active_pixels!(images, patches);
 
 ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
-    images, deepcopy(vp_init), patches, [1], use_raw_psf=false);
+    images, deepcopy(vp_init), patches, [1], use_raw_psf=true);
+
 elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
 
-n = 3
-image_fft = CelesteEDA.render_sources_fft(
-    ea_fft, fsm_mat, [ 1, 2 ], n,
-    include_iota=true, include_epsilon=true, field=:E_G);
-valid_pixels = render_valid_pixels(ea_fft, [1, 2], n)
-
-PyPlot.close("all")
-matshow(image_fft); colorbar()
-
-raw_image = CelesteEDA.show_sources_image(ea_fft, [1, 2], n);
-matshow(raw_image); colorbar()
-
-elbo_fft_opt(ea_fft);
-
-
-
-
-
-
-
-
-
 f_evals, max_f, max_x, nm_result, transform =
-    maximize_f_two_steps(elbo_fft_opt, ea_fft, verbose=true);
+    maximize_f_two_steps(elbo_fft_opt, ea_fft, verbose=false);
 vp_opt = deepcopy(ea_fft.vp);
 
 # Look at it
-s = 1; n = 3;
+sources = collect(1:ea_fft.S); n = 3;
 ea_fft.vp = deepcopy(vp_init);
 start_image_fft = CelesteEDA.render_sources_fft(
-    ea_fft, fsm_mat, [ s ], n,
+    ea_fft, fsm_mat, sources, n,
     include_iota=true, include_epsilon=true, field=:E_G);
 ea_fft.vp = deepcopy(vp_opt);
 image_fft = CelesteEDA.render_sources_fft(
-        ea_fft, fsm_mat, [ s ], n,
+        ea_fft, fsm_mat, sources, n,
         include_iota=true, include_epsilon=true, field=:E_G);
-raw_image = CelesteEDA.show_source_image(ea_fft, s, n);
+raw_image = CelesteEDA.show_sources_image(ea_fft, sources, n);
 
 
 PyPlot.close("all")
@@ -97,38 +107,3 @@ matshow(image_fft); colorbar(); title("fft Celeste")
 matshow(raw_image); colorbar(); title("Raw image")
 matshow(image_fft - raw_image); colorbar(); title("Final residual")
 
-
-
-
-p = ea_fft.patches[1, 3];
-foo = is_pixel_in_patch(608, 1005, p)
-
-H_min, W_min, H_max, W_max = get_active_pixel_range(ea_fft.patches, sources, 3);
-image = fill(0.0, (H_max - H_min + 1, W_max - W_min + 1));
-
-image_fft_vec = [
-    CelesteEDA.render_source_fft(
-        ea_fft, fsm_mat, s, n,
-        include_iota=false, include_epsilon=false, field=:E_G) for s in sources ];
-
-for h in H_min:H_max, w in W_min:W_max, s in sources
-    p = ea_fft.patches[s, n]
-    if is_pixel_in_patch(h, w, p)
-        image[h - H_min + 1, w - W_min + 1] +=
-            image_fft_vec[s][h - p.bitmap_offset[1], w - p.bitmap_offset[2]]
-    end
-end
-
-
-# This double counts!
-sources = Int[1, 2]
-for s in sources
-    p = ea_fft.patches[s, n];
-    Hs, Ws = size(p.active_pixel_bitmap);
-    image_fft = CelesteEDA.render_source_fft(
-            ea_fft, fsm_mat, s, n,
-            include_iota=true, include_epsilon=true, field=:E_G)
-    image_fft[isnan(image_fft)] = 0
-    image[ p.bitmap_offset[1] + 1 - H_min + (1:size(image_fft, 1)),
-           p.bitmap_offset[2] + 1 - W_min + (1:size(image_fft, 2))] += image_fft
-end
