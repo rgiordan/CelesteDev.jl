@@ -2,9 +2,14 @@ using JLD
 using Celeste
 using PyPlot
 
+
 import Celeste: Infer, DeterministicVI, ParallelRun, Model, DeterministicVI,
     PSF, SDSSIO, SensitiveFloats, Transform, DeterministicVIImagePSF,
     CelesteEDA
+
+include(joinpath(Pkg.dir("Celeste"), "test", "Synthetic.jl"))
+include(joinpath(Pkg.dir("Celeste"), "test", "SampleData.jl"))
+include(joinpath(Pkg.dir("Celeste"), "test", "DerivativeTestUtils.jl"))
 
 import Celeste.DeterministicVI:
     ElboArgs, ElboIntermediateVariables, maximize_f, maximize_f_two_steps,
@@ -14,7 +19,46 @@ import Celeste.DeterministicVI:
     accumulate_source_pixel_brightness!,
     KLDivergence, init_sources
 
-import Celeste.Infer: load_active_pixels!, get_sky_patches
+import Celeste.Infer: load_active_pixels!, get_sky_patches, is_pixel_in_patch,
+    get_active_pixel_range
+
+
+
+images, ea, two_body = SampleData.gen_two_body_dataset(perturb=false);
+patches = Infer.get_sky_patches(images, two_body; radius_override_pix=50);
+Infer.load_active_pixels!(
+    images, patches, noise_fraction=Inf, min_radius_pix=Nullable(10));
+n = 3
+
+using Base.Test
+img_1 = CelesteEDA.render_sources(ea, [1], n, include_epsilon=false, include_iota=false);
+img_2 = CelesteEDA.render_sources(ea, [2], n, include_epsilon=false, include_iota=false);
+img_12 = CelesteEDA.render_sources(ea, [1, 2], n, include_epsilon=false, include_iota=false);
+@test_approx_eq_eps(maximum(abs(img_12 - img_1 - img_2)), 0.0, 1e-12)
+
+ea_fft = DeterministicVIImagePSF.ElboArgs(
+    images, deepcopy(ea.vp), patches, collect(1:ea.S), psf_K=1);
+psf_image_mat = Matrix{Float64}[
+    PSF.get_psf_at_point(patches[s, b].psf) for s in 1:ea_fft.S, b in 1:ea_fft.N];
+fsm_mat = DeterministicVIImagePSF.FSMSensitiveFloatMatrices[
+    DeterministicVIImagePSF.FSMSensitiveFloatMatrices() for
+    s in 1:ea_fft.S, b in 1:ea_fft.N];
+DeterministicVIImagePSF.initialize_fsm_sf_matrices!(fsm_mat, ea_fft, psf_image_mat);
+
+fft_img_1 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [1], n, include_epsilon=false, include_iota=false);
+fft_img_2 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [2], n, include_epsilon=false, include_iota=false);
+fft_img_12 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [1, 2], n, include_epsilon=false, include_iota=false);
+@test_approx_eq_eps(maximum(abs(fft_img_12 - fft_img_1 - fft_img_2)), 0.0, 1e-12)
+
+full_img_12 = CelesteEDA.render_sources(ea, [1, 2], n, include_epsilon=true, include_iota=true);
+full_fft_img_12 = CelesteEDA.render_sources_fft(ea_fft, fsm_mat, [1, 2], n, include_epsilon=true, include_iota=true);
+orig_img_12 = CelesteEDA.show_sources_image(ea, [1, 2], n);
+
+# Check that the two images are roughly the same, and roughly the same as the original..
+@test median(abs(full_fft_img_12 - full_img_12)) / maximum(abs(full_img_12)) < 0.01
+@test median(abs(full_fft_img_12 - orig_img_12)) / maximum(abs(orig_img_12)) < 0.02
+
+
 
 file_dir = joinpath(Pkg.dir("Celeste"), "benchmark/stripe82")
 
@@ -73,12 +117,12 @@ vp_opt = deepcopy(ea_fft.vp);
 # Look at it
 s = 1; n = 3;
 ea_fft.vp = deepcopy(vp_init);
-start_image_fft = CelesteEDA.render_source_fft(
-    ea_fft, fsm_mat, s, n,
+start_image_fft = CelesteEDA.render_sources_fft(
+    ea_fft, fsm_mat, [ s ], n,
     include_iota=true, include_epsilon=true, field=:E_G);
 ea_fft.vp = deepcopy(vp_opt);
-image_fft = CelesteEDA.render_source_fft(
-        ea_fft, fsm_mat, s, n,
+image_fft = CelesteEDA.render_sources_fft(
+        ea_fft, fsm_mat, [ s ], n,
         include_iota=true, include_epsilon=true, field=:E_G);
 raw_image = CelesteEDA.show_source_image(ea_fft, s, n);
 
@@ -89,36 +133,13 @@ matshow(image_fft); colorbar(); title("fft Celeste")
 matshow(raw_image); colorbar(); title("Raw image")
 matshow(image_fft - raw_image); colorbar(); title("Final residual")
 
-function get_active_pixel_range(patches::Vector{SkyPatch})
-    H_min = minimum([ p.bitmap_offset[1] + 1 for p in patches ])
-    W_min = minimum([ p.bitmap_offset[2] + 1 for p in patches ])
-    H_max = maximum([ p.bitmap_offset[1] + size(p.active_pixel_bitmap, 1)
-                      for p in patches ])
-    W_max = maximum([ p.bitmap_offset[2] + size(p.active_pixel_bitmap, 2)
-                      for p in patches ])
-    H_min, W_min, H_max, W_max
-end
 
-function is_pixel_in_patch(h::Int, w::Int, p::SkyPatch)
-    hp = h - p.bitmap_offset[1]
-    wp = w - p.bitmap_offset[2]
-    in_patch = 
-        (hp > 0) &
-        (wp > 0) &
-        (hp <= size(p.active_pixel_bitmap, 1)) &
-        (wp <= size(p.active_pixel_bitmap, 2))
-    if !in_patch
-        return false
-    else
-        return p.active_pixel_bitmap[hp, wp]
-    end
-end
 
 
 p = ea_fft.patches[1, 3];
 foo = is_pixel_in_patch(608, 1005, p)
 
-H_min, W_min, H_max, W_max = get_active_pixel_range(ea_fft.patches[:, 3]);
+H_min, W_min, H_max, W_max = get_active_pixel_range(ea_fft.patches, sources, 3);
 image = fill(0.0, (H_max - H_min + 1, W_max - W_min + 1));
 
 image_fft_vec = [
