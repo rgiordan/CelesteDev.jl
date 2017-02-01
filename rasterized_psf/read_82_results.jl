@@ -27,7 +27,7 @@ import Celeste.Infer: load_active_pixels!, get_sky_patches, is_pixel_in_patch,
 # Load stripe82 results.
 
 stripe82_dir = joinpath(Pkg.dir("Celeste"), "benchmark/stripe82/")
-stripe_82_results = JLD.load(joinpath(stripe82_dir, "results_and_errors_small_box_fft-004263-5-0119.jld"))
+stripe_82_results = JLD.load(joinpath(stripe82_dir, "results_and_errors_full_box_fft_two_step-004263-5-0119.jld"))
 
 keep_cols = [:objid, :is_star, :gal_mag_r, :star_mag_r ]
 results = hcat(stripe_82_results["celeste_df"][keep_cols],
@@ -60,13 +60,38 @@ end
 
 # Pick a source and optimize
 #coadd_objid = 8647474692482139458
-# coadd_objid = 8647474692482138819
-# objid = convert(String, stripe_82_results["celeste_df"][stripe_82_results["coadd_df"][:objid] .== coadd_objid, :objid][1])
+bad_ids = [
+8647474692482203916,
+8647474692482203881,
+8647474692482203819,
+8647474692482203817,
+8647474692482138341,
+8647474692482203737,
+];
+
+coadd_objid = bad_ids[2]
+objid = convert(String, stripe_82_results["celeste_df"][stripe_82_results["coadd_df"][:objid] .== coadd_objid, :objid][1])
 
 #objid = "1237663784734491701"
-objid = "1237663784734490687" # A NaN object on the MOG code
 results[ results[:objid] .== objid, :]
+vcat(
+    stripe_82_results["celeste_df"][ results[:objid] .== objid, :],
+    stripe_82_results["coadd_df"][ results[:objid] .== objid, :],
+    stripe_82_results["celeste_err"][ results[:objid] .== objid, :])
 
+for id in bad_ids
+    objid = convert(String, stripe_82_results["celeste_df"][stripe_82_results["coadd_df"][:objid] .== id, :objid][1])
+    println(stripe_82_results["celeste_err"][ results[:objid] .== objid, :])
+end
+
+
+for id in bad_ids
+    objid = convert(String, stripe_82_results["celeste_df"][stripe_82_results["coadd_df"][:objid] .== id, :objid][1])
+    println(stripe_82_results["celeste_df"][ results[:objid] .== objid, :])
+end
+
+
+# objid = "1237663784734490824" # This is bad
 target_sources =  [ findfirst(objids, objid) ];
 neighbor_map = Infer.find_neighbors(target_sources, catalog, images);
 
@@ -107,17 +132,17 @@ ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp_init), patches, [1], use_raw_psf=true);
 elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
 f_evals, max_f, max_x, nm_result, transform =
-    maximize_f_two_steps(elbo_fft_opt, ea_fft, verbose=false);
+    maximize_f_two_steps(elbo_fft_opt, ea_fft, verbose=true);
 vp_opt = deepcopy(ea_fft.vp);
 
+view_s = 1
+hcat(CelesteEDA.print_vp(vp_opt[view_s]),
+     CelesteEDA.print_vp(mog_vp_opt[view_s]),
+     CelesteEDA.print_vp(vp_init[view_s]))
 
 
 println("Mog, then FFT")
 hcat(CelesteEDA.print_vp(mog_vp_opt[1]), CelesteEDA.print_vp(vp_opt[1]))
-results[ results[:objid] .== objid, :]
-stripe_82_results["celeste_df"][ results[:objid] .== objid, :]
-stripe_82_results["coadd_df"][ results[:objid] .== objid, :]
-stripe_82_results["celeste_err"][ results[:objid] .== objid, :]
 
 # Look at it
 n = 3;
@@ -133,12 +158,18 @@ image_fft = CelesteEDA.render_sources_fft(
 ea.vp = deepcopy(mog_vp_opt);
 image_mog = CelesteEDA.render_sources(
         ea, sources, n, include_iota=true, include_epsilon=true, field=:E_G);
+ea.vp = deepcopy(vp_init);
+start_image_mog = CelesteEDA.render_sources(
+        ea, sources, n, include_iota=true, include_epsilon=true, field=:E_G);
 raw_image = CelesteEDA.show_sources_image(ea_fft, sources, n);
 
 PyPlot.close("all")
 matshow(start_image_fft); colorbar(); title("initial fft Celeste ")
+matshow(start_image_fft); colorbar(); title("initial mog Celeste ")
 matshow(image_fft); colorbar(); title("fft Celeste ")
 matshow(image_mog); colorbar(); title("mog Celeste ")
 matshow(raw_image); colorbar(); title("Raw image ")
-matshow(image_fft - raw_image); colorbar(); title("Final residual ")
+matshow(image_fft - raw_image); colorbar(); title("fft residual ")
+matshow(image_mog - raw_image); colorbar(); title("mog residual ")
+# matshow(image_mog - image_fft); colorbar(); title("fft - mog ")
 
