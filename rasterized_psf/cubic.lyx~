@@ -159,7 +159,7 @@ a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
 and
 \begin_inset Formula 
 \begin{align*}
-a_{1}+2b_{1}+4c_{1}+8d_{1}\\
+a_{1}+2b_{1}+4c_{1}+8d_{1} & =0
 \end{align*}
 
 \end_inset
@@ -212,6 +212,337 @@ Consequently, by induction for b splines we always have
 \end_inset
 
 .
+\end_layout
+
+\begin_layout Standard
+We should be able to prove this for the cubic, too, since it seems to be
+ the case.
+ Take 
+\begin_inset Formula $x\in\left[0,1\right]$
+\end_inset
+
+
+\begin_inset Formula 
+\begin{align*}
+\sum_{i=-2}^{1}f\left(x+i\right)= & f\left(x-2\right)+f\left(x-1\right)+f\left(x\right)+f\left(x+1\right)\\
+= & f\left(2-x\right)+f\left(x+1\right)+f\left(1-x\right)+f\left(x\right)\\
+= & a_{1}+b_{1}\left(2-x\right)+c_{1}\left(2-x\right)^{2}+d_{1}\left(2-x\right)^{3}+\\
+ & a_{1}+b_{1}\left(x+1\right)+c_{1}\left(x+1\right)^{2}+d_{1}\left(x+1\right)^{3}+\\
+ & a_{0}+b_{0}\left(1-x\right)+c_{0}\left(1-x\right)^{2}+d_{0}\left(1-x\right)^{3}+\\
+ & a_{0}+b_{0}x+c_{0}x^{2}+d_{0}x^{3}\\
+= & 2a_{1}+3b_{1}+c_{1}\left(\left(2-x\right)^{2}+\left(x+1\right)^{2}\right)+d_{1}\left(\left(2-x\right)^{3}+\left(x+1\right)^{3}\right)+\\
+ & 2a_{0}+b_{0}+c_{0}\left(\left(1-x\right)^{2}+x^{2}\right)+d_{0}\left(\left(1-x\right)^{3}+x^{3}\right)\\
+\left(2-x\right)^{2}+\left(x+1\right)^{2}= & 4-4x+x^{2}+x^{2}+2x+1=2x^{2}-2x+5\\
+\left(2-x\right)^{3}+\left(x+1\right)^{3}= & 8-3\cdot4x+3\cdot2x^{2}-x^{3}+x^{3}+3x^{2}+3x+1\\
+= & 9-9x+9x^{2}\\
+\sum_{i=-2}^{1}f\left(x+i\right)= & 2a_{1}+3b_{1}+c_{1}\left(2x^{2}-2x+5\right)+d_{1}\left(9-9x+9x^{2}\right)+2a_{0}+b_{0}+c_{0}\left(\left(1-x\right)^{2}+x^{2}\right)+d_{0}\left(\left(1-x\right)^{3}+x^{3}\right)
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+This will probably not be insightful even if it leads anywhere.
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right) & =\begin{cases}
+a_{0}+b_{0}x+c_{0}x^{2}+d_{0}x^{3} & x\in[0,1)\\
+a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f'\left(x\right) & =\begin{cases}
+b_{0}+2c_{0}x+3d_{0}x^{2} & x\in[0,1)\\
+b_{1}+2c_{1}x+3d_{1}x^{2} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f''\left(x\right) & =\begin{cases}
+2c_{0}+6d_{0}x & x\in[0,1)\\
+2c_{1}+6d_{1}x & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f'''\left(x\right) & =\begin{cases}
+6d_{0} & x\in[0,1)\\
+6d_{1} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+The continuity constraints on the second derivative translate to
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f''\left(x\right) & =\begin{cases}
+a+bx & x\in[0,1)\\
+\left(a+b\right)+c\left(x-1\right) & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Since 
+\begin_inset Formula $f'\left(0\right)=0$
+\end_inset
+
+, there are no additional degrees of freedom in 
+\begin_inset Formula $f'$
+\end_inset
+
+:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f'\left(x\right)=\begin{cases}
+ax+\frac{1}{2}bx^{2} & x\in[0,1)\\
+\left(a+\frac{1}{2}b\right)+\left(a+b\right)\left(x-1\right)+\frac{1}{2}c\left(x-1\right)^{2} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Since 
+\begin_inset Formula $f\left(0\right)=1$
+\end_inset
+
+, there are no additional degrees of freedom in 
+\begin_inset Formula $f$
+\end_inset
+
+:
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right)=\begin{cases}
+1+\frac{1}{2}ax^{2}+\frac{1}{6}bx^{3} & x\in[0,1)\\
+\left(1+\frac{1}{2}a+\frac{1}{6}b\right)+\left(a+\frac{1}{2}b\right)\left(x-1\right)+\frac{1}{2}\left(a+b\right)\left(x-1\right)^{2}+\frac{1}{6}c\left(x-1\right)^{3} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Now we have 
+\begin_inset Formula $f\left(1\right)=0$
+\end_inset
+
+, and 
+\begin_inset Formula $f\left(2\right)=0$
+\end_inset
+
+ so
+\begin_inset Formula 
+\begin{align*}
+1+\frac{1}{2}a+\frac{1}{6}b & =0\Rightarrow\\
+3a+b & =-6
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+and
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+\left(a+\frac{1}{2}b\right)+\frac{1}{2}\left(a+b\right)+\frac{1}{6}c & =0\\
+\left(2a+3b\right)+3\left(a+b\right)+c & =0\\
+5a+6b+c & =0
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+and so.
+\end_layout
+
+\begin_layout Standard
+Um
+\end_layout
+
+\begin_layout Standard
+Here is one better:
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right) & =\begin{cases}
+f_{1}\left(x\right) & 0\le x\le1\\
+f_{2}\left(x\right) & 1<x\le2\\
+0 & o.w.
+\end{cases}\\
+\textrm{for } & x\in\left(0,\frac{1}{2}\right)\\
+f\left(x\right) & =f\left(0\right)+\int_{0}^{x}f{}_{1}'\left(s\right)ds\\
+ & =f\left(0\right)+\int_{0}^{x}\left(f_{1}'\left(0\right)+\int_{0}^{s}f_{1}''\left(t\right)dt\right)ds\\
+ & =1+\int_{0}^{x}\int_{0}^{s}\left(a+bt\right)dtds
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+And similarly,
+\begin_inset Formula 
+\begin{align*}
+f\left(1-x\right) & =f\left(1\right)-\int_{1-x}^{1}f'\left(s\right)ds\\
+ & =f\left(1\right)-\int_{1-x}^{1}\left(f'\left(0\right)+\int_{0}^{s}f''\left(t\right)dt\right)ds\\
+ & =-\int_{1-x}^{1}\int_{0}^{s}\left(a+bt\right)dtds
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Taking
+\begin_inset Formula 
+\begin{align*}
+s' & =1-s\\
+\int_{1-x}^{1}\int_{0}^{s}\left(a+bt\right)dtds & =-\int_{x}^{0}\int_{0}^{1-s'}\left(a+bt\right)dtds'\\
+ & =\int_{0}^{x}\int_{0}^{1-s'}\left(a+bt\right)dtds'
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+So that
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right)+f\left(1-x\right) & =1+\int_{0}^{x}\int_{0}^{s}\left(a+bt\right)dtds-\int_{0}^{x}\int_{0}^{1-s}\left(a+bt\right)dtds\\
+ & =1+\int_{0}^{x}\left[\int_{0}^{s}\left(a+bt\right)dt-\int_{0}^{1-s}\left(a+bt\right)dt\right]ds\\
+ & =1+\int_{0}^{x}\left[as+\frac{1}{2}bs^{2}-\left(\left(1-s\right)a+\frac{1}{2}b\left(1-s\right)^{2}\right)\right]ds\\
+ & =1+\int_{0}^{x}\left[as+\frac{1}{2}bs^{2}-\left(a-as+\frac{1}{2}b\left(1-s\right)^{2}\right)\right]ds
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+How about
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right)+f\left(1-x\right)+f\left(1+x\right)+f\left(2-x\right)= & f\left(0\right)+\int_{0}^{x}f'\left(s\right)ds+\\
+ & f\left(1\right)+\int_{0}^{x}f'\left(1-s\right)ds+\\
+ & f\left(1\right)+\int_{0}^{x}f'\left(1+s\right)ds+\\
+ & f\left(2\right)+\int_{0}^{x}f'\left(2-s\right)ds\\
+= & 1+\int_{0}^{x}\left(f'\left(s\right)+f'\left(1-s\right)+f'\left(1+s\right)+f'\left(2-s\right)\right)
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+And similarly,
+\begin_inset Formula 
+\begin{align*}
+f'\left(x\right)+f'\left(1-x\right)+f'\left(1+x\right)+f'\left(2-x\right)= & f'\left(0\right)+\int_{0}^{x}f''\left(s\right)ds+\\
+ & f'\left(1\right)+\int_{0}^{x}f''\left(1-s\right)ds+\\
+ & f'\left(1\right)+\int_{0}^{x}f''\left(1+s\right)ds+\\
+ & f'\left(2\right)+\int_{0}^{x}f''\left(2-s\right)ds\\
+= & 2f'\left(1\right)+f'\left(2\right)+\int_{0}^{x}\left(f''\left(s\right)+f''\left(1-s\right)+f''\left(1+s\right)+f''\left(2-s\right)\right)ds
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Then,
+\begin_inset Formula 
+\begin{align*}
+f''\left(x\right)+f''\left(1-x\right)+f''\left(1+x\right)+f''\left(2-x\right) & =2a+bx+b\left(1-x\right)+2\left(a+b\right)+c\left(1+x\right)+c\left(2-x\right)\\
+ & =2a+b+2\left(a+b\right)+3c\\
+ & =4a+3b+3c
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Also,
+\begin_inset Formula 
+\begin{align*}
+f'\left(1\right) & =a+\frac{1}{2}b\\
+f'\left(2\right) & =a+\frac{1}{2}b+a+b=2a+\frac{3}{2}b+\frac{1}{2}c
+\end{align*}
+
+\end_inset
+
+
 \end_layout
 
 \end_body

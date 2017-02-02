@@ -91,6 +91,8 @@ for id in bad_ids
 end
 
 
+objid = "1237663784734490980"
+
 # objid = "1237663784734490824" # This is bad
 target_sources =  [ findfirst(objids, objid) ];
 neighbor_map = Infer.find_neighbors(target_sources, catalog, images);
@@ -123,7 +125,7 @@ mog_vp_opt[1][ids.k[:, 1]] = mog_vp_opt[1][ids.k[:, 1]] / sum(mog_vp_opt[1][ids.
 ea = ElboArgs(images, deepcopy(mog_vp_opt), patches, [1]);
 f_evals, max_f, max_x, nm_result =
     Celeste.DeterministicVI.maximize_f(
-        Celeste.DeterministicVI.elbo, ea, verbose=true, max_iters=200);
+        Celeste.DeterministicVI.elbo, ea, verbose=true, max_iters=200, ftol_rel=1e-10);
 ea.vp
 mog_vp_opt = deepcopy(ea.vp);
 
@@ -131,8 +133,8 @@ mog_vp_opt = deepcopy(ea.vp);
 ea_fft, fsm_mat = DeterministicVIImagePSF.initialize_fft_elbo_parameters(
     images, deepcopy(vp_init), patches, [1], use_raw_psf=true);
 elbo_fft_opt = DeterministicVIImagePSF.get_fft_elbo_function(ea_fft, fsm_mat);
-f_evals, max_f, max_x, nm_result, transform =
-    maximize_f_two_steps(elbo_fft_opt, ea_fft, verbose=true);
+f_evals, max_f, max_x, nm_result_fft, transform =
+    maximize_f_two_steps(elbo_fft_opt, ea_fft, verbose=true, ftol_rel=1e-10);
 vp_opt = deepcopy(ea_fft.vp);
 
 view_s = 1
@@ -146,30 +148,36 @@ hcat(CelesteEDA.print_vp(mog_vp_opt[1]), CelesteEDA.print_vp(vp_opt[1]))
 
 # Look at it
 n = 3;
-sources = collect(1:ea_fft.S);
+# sources = collect(1:ea_fft.S);
+sources = [1]
 ea_fft.vp = deepcopy(vp_init);
 start_image_fft = CelesteEDA.render_sources_fft(
     ea_fft, fsm_mat, sources, n,
     include_iota=true, include_epsilon=true, field=:E_G);
 ea_fft.vp = deepcopy(vp_opt);
+ea_fft.vp[1][ids.a] = [0, 1]
 image_fft = CelesteEDA.render_sources_fft(
         ea_fft, fsm_mat, sources, n,
         include_iota=true, include_epsilon=true, field=:E_G);
 ea.vp = deepcopy(mog_vp_opt);
+ea.vp[1][ids.a] = [0, 1]
 image_mog = CelesteEDA.render_sources(
         ea, sources, n, include_iota=true, include_epsilon=true, field=:E_G);
 ea.vp = deepcopy(vp_init);
 start_image_mog = CelesteEDA.render_sources(
         ea, sources, n, include_iota=true, include_epsilon=true, field=:E_G);
 raw_image = CelesteEDA.show_sources_image(ea_fft, sources, n);
+# raw_image[1:12, :] = NaN
+
 
 PyPlot.close("all")
-matshow(start_image_fft); colorbar(); title("initial fft Celeste ")
-matshow(start_image_fft); colorbar(); title("initial mog Celeste ")
+# matshow(start_image_fft); colorbar(); title("initial fft Celeste ")
+# matshow(start_image_fft); colorbar(); title("initial mog Celeste ")
+PyPlot.close("all")
 matshow(image_fft); colorbar(); title("fft Celeste ")
 matshow(image_mog); colorbar(); title("mog Celeste ")
 matshow(raw_image); colorbar(); title("Raw image ")
 matshow(image_fft - raw_image); colorbar(); title("fft residual ")
 matshow(image_mog - raw_image); colorbar(); title("mog residual ")
-# matshow(image_mog - image_fft); colorbar(); title("fft - mog ")
+matshow(image_mog - image_fft); colorbar(); title("fft - mog ")
 

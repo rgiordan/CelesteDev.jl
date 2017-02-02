@@ -109,16 +109,21 @@ so that the contribution to the expected pixel count at a pixel centered
 \end_inset
 
 .
- We actually observe pixel counts 
+ Each star has a color in each ban, denoted 
 \begin_inset Formula $c_{b,\mu}$
+\end_inset
+
+.
+ We actually observe pixel counts 
+\begin_inset Formula $y_{b,\mu}$
 \end_inset
 
  associated with the star, which we assume are distributed independently
  and normally at each pixel:
 \begin_inset Formula 
 \begin{align*}
-c_{b,\mu}\left(x\right)\vert\psi_{b,\mu},\epsilon_{b},\sigma & \sim\mathcal{N}\left(\psi_{b,\mu}\left(x\right)+\epsilon_{b}\left(x\right),\sigma^{2}\right)\\
-\ell_{b}\left(\psi_{b,\mu}\right) & :=\log P\left(c_{b,\mu}\left(x\right)\vert\psi_{b,\mu},\epsilon_{b},\sigma\right)
+y_{b,\mu}\left(x\right)\vert\psi_{b,\mu},\epsilon_{b},\sigma,c_{b,\mu} & \sim\mathcal{N}\left(c_{b,\mu}\psi_{b,\mu}\left(x\right)+\epsilon_{b}\left(x\right),\sigma^{2}\right)\\
+\ell_{b}\left(\psi_{b,\mu}\right) & :=\log P\left(y_{b,\mu}\left(x\right)\vert\psi_{b,\mu},\epsilon_{b},\sigma,c_{b,\mu}\right)
 \end{align*}
 
 \end_inset
@@ -130,7 +135,7 @@ c_{b,\mu}\left(x\right)\vert\psi_{b,\mu},\epsilon_{b},\sigma & \sim\mathcal{N}\l
 For simplicity, assume that no sources overlap so that we only need to add
  contributions from one source.
  Given a set of 
-\begin_inset Formula $c_{b,\mu}$
+\begin_inset Formula $y_{b,\mu}$
 \end_inset
 
  and the remaining parameters, the goal is to infer 
@@ -150,7 +155,8 @@ For simplicity, assume that no sources overlap so that we only need to add
 \end_inset
 
 .
- For simplicity, we can begin with maximum likelihood.
+ For simplicity, we can begin with maximum likelihood, though adapting to
+ variational Bayes is straightforward.
 \end_layout
 
 \begin_layout Standard
@@ -365,14 +371,18 @@ Load images.
 \begin_deeper
 \begin_layout Itemize
 The pixels 
-\begin_inset Formula $c_{b}$
+\begin_inset Formula $y_{b}$
 \end_inset
 
 
 \end_layout
 
 \begin_layout Itemize
-A catalog of stars, colors, and locations
+A catalog of stars and colors 
+\begin_inset Formula $c_{b}$
+\end_inset
+
+
 \end_layout
 
 \begin_layout Itemize

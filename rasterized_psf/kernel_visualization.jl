@@ -34,20 +34,34 @@ for cubic_a in Float64[ -2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2]
 end
 
 
-kernel_fun = x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, 0.)[1]
-#kernel_fun = x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)[1]
-#kernel_fun = x -> DeterministicVIImagePSF.lanczos_kernel_with_derivatives(x, 2.)[1]
+PyPlot.close("all")
+cubic_a = -1.0
+for deriv_level in 1:3
+    cubic_vals = Float64[
+        DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, cubic_a)[deriv_level]
+        for x in x_vals ];
+    PyPlot.figure()
+    plot(collect(x_vals), cubic_vals, "b."); title(cubic_a)    
+end
+
+kernel_fun = x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, 0.5)[1]
+# kernel_fun = x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)[1]
+# kernel_fun = x -> DeterministicVIImagePSF.lanczos_kernel_with_derivatives(x, 2.)[1]
 
 kernel_width = 2
 for x in 0:0.01:1
     x0_vals = (-kernel_width:(kernel_width - 1)) + x
     k_vec = [ kernel_fun(x0) for x0 in x0_vals ]
-    println(k_vec, " ", sum(k_vec))
+    println(collect(x0_vals), " ", k_vec, " ", sum(k_vec))
 end
 
 DeterministicVIImagePSF.cubic_kernel_with_derivatives(1.999, 0.2)
+DeterministicVIImagePSF.cubic_kernel_with_derivatives(1.999, -0.2)
 DeterministicVIImagePSF.bspline_kernel_with_derivatives(1.999)
 
+
+coeff_mat = zeros(8, 8);
+coeff_mat[0]
 
 
 
