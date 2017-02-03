@@ -9,6 +9,7 @@ function condition_number(mat)
     maximum(ev) / minimum(abs(ev))
 end
 
+using Celeste.Model.UnconstrainedParams
 
 function x_to_vp(x, ea, transform)
     reshaped_x = reshape(x, length(UnconstrainedParams), length(ea.active_sources));
@@ -21,11 +22,12 @@ end
 
 function render_optimization_steps(
     ea::Celeste.DeterministicVI.ElboArgs,
-    fsm_mat::Vector{Celeste.DeterministicVIImagePSF.FSMSensitiveFloatMatrices},
+    fsm_mat::Matrix{Celeste.DeterministicVIImagePSF.FSMSensitiveFloatMatrices},
     nm_result::Optim.MultivariateOptimizationResults,
     transform::Celeste.Transform.DataTransform,
-    s::Int, b::Int)
+    sources::Vector{Int}, b::Int; s=1)
     
+    assert(s in sources)
     local x_array = [ deepcopy(tr.metadata["x"]) for tr in nm_result.trace ]
     local vp_array = [ x_to_vp(x, ea, transform) for x in x_array ]
     
@@ -37,15 +39,15 @@ function render_optimization_steps(
         vp_loc = deepcopy(vp_array[iter])
 
         ea_fft.vp = vp_loc
-        push!(images, CelesteEDA.render_source_fft(ea, fsm_mat, s, b))
+        push!(images, CelesteEDA.render_sources_fft(ea, fsm_mat, sources, b))
 
         vp_loc[s][ids.a] = [ 1, 0 ]
         ea_fft.vp = vp_loc
-        push!(images_star, CelesteEDA.render_source_fft(ea, fsm_mat, s, b))
+        push!(images_star, CelesteEDA.render_sources_fft(ea, fsm_mat, sources, b))
 
         vp_loc[s][ids.a] = [ 0, 1 ]
         ea_fft.vp = vp_loc
-        push!(images_gal, CelesteEDA.render_source_fft(ea, fsm_mat, s, b))
+        push!(images_gal, CelesteEDA.render_sources_fft(ea, fsm_mat, sources, b))
     end
 
     return images, images_star, images_gal, vp_array

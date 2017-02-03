@@ -35,7 +35,7 @@ end
 
 
 PyPlot.close("all")
-cubic_a = -1.0
+cubic_a = -1.7
 for deriv_level in 1:3
     cubic_vals = Float64[
         DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, cubic_a)[deriv_level]
@@ -44,7 +44,7 @@ for deriv_level in 1:3
     plot(collect(x_vals), cubic_vals, "b."); title(cubic_a)    
 end
 
-kernel_fun = x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, 0.5)[1]
+kernel_fun = x -> DeterministicVIImagePSF.cubic_kernel_with_derivatives(x, cubic_a)[1]
 # kernel_fun = x -> DeterministicVIImagePSF.bspline_kernel_with_derivatives(x)[1]
 # kernel_fun = x -> DeterministicVIImagePSF.lanczos_kernel_with_derivatives(x, 2.)[1]
 
@@ -59,11 +59,3 @@ DeterministicVIImagePSF.cubic_kernel_with_derivatives(1.999, 0.2)
 DeterministicVIImagePSF.cubic_kernel_with_derivatives(1.999, -0.2)
 DeterministicVIImagePSF.bspline_kernel_with_derivatives(1.999)
 
-
-coeff_mat = zeros(8, 8);
-coeff_mat[0]
-
-
-
-
-# okok 

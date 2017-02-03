@@ -85,7 +85,7 @@ We set
 \begin{align*}
 f\left(x\right) & =\begin{cases}
 a_{0}+b_{0}x+c_{0}x^{2}+d_{0}x^{3} & x\in[0,1)\\
-a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
+a_{1}+b_{1}\left(x-1\right)+c_{1}\left(x-1\right)^{2}+d_{1}\left(x-1\right)^{3} & x\in[1,2)\\
 0 & o/w
 \end{cases}
 \end{align*}
@@ -97,15 +97,40 @@ a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
 
 \begin_layout Standard
 The constraints are
+\end_layout
+
+\begin_layout Standard
 \begin_inset Formula 
 \begin{align*}
 f\left(0\right) & =1\\
-f'\left(0\right) & =0\\
-f\left(1^{-}\right) & =f\left(1^{+}\right)\\
-f'\left(1^{-}\right) & =f'\left(1^{+}\right)\\
-f''\left(1^{-}\right) & =f''\left(1^{+}\right)\\
+f\left(1^{-}\right) & =0\\
+f\left(1^{+}\right) & =0\\
 f\left(2\right) & =0\\
-f'\left(2\right) & =0\\
+f'\left(0\right) & =0\\
+f'\left(2\right) & =0
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+And then continuity:
+\begin_inset Formula 
+\begin{align*}
+f'\left(1^{-}\right) & =f'\left(1^{+}\right)
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+These should leave one free parameter unless we also enforce 
+\begin_inset Formula 
+\begin{align*}
 f''\left(2\right) & =0
 \end{align*}
 
@@ -115,11 +140,16 @@ f''\left(2\right) & =0
 \end_layout
 
 \begin_layout Standard
-These eight constraints should give all the coefficients.
+In that case, we should get bsplines.
+ The constraints are
 \begin_inset Formula 
 \begin{align*}
 a_{0} & =1\\
-b_{0} & =0
+a_{0}+b_{0}+c_{0}+d_{0} & =0\\
+a_{1} & =0\\
+a_{1}+b_{1}+c_{1}+d_{1} & =0\\
+b_{0} & =0\\
+b_{1}+2c_{1}+3d_{1} & =0
 \end{align*}
 
 \end_inset
@@ -128,11 +158,28 @@ b_{0} & =0
 \end_layout
 
 \begin_layout Standard
+And by continuity,
+\begin_inset Formula 
+\begin{align*}
+b_{0}+2c_{0}+3d_{0} & =b_{1}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+So eliminating obvious ones (including 
+\begin_inset Formula $d_{0}=-\left(1+c_{0}\right)$
+\end_inset
+
+),
 \begin_inset Formula 
 \begin{align*}
 f\left(x\right) & =\begin{cases}
-1+c_{0}x^{2}+d_{0}x^{3} & x\in[0,1)\\
-a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
+1+c_{0}x^{2}-\left(1+c_{0}\right)x^{3} & x\in[0,1)\\
+b_{1}\left(x-1\right)+c_{1}\left(x-1\right)^{2}+d_{1}\left(x-1\right)^{3} & x\in[1,2)\\
 0 & o/w
 \end{cases}
 \end{align*}
@@ -143,11 +190,15 @@ a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
 \end_layout
 
 \begin_layout Standard
+Our equations are
+\end_layout
+
+\begin_layout Standard
 \begin_inset Formula 
 \begin{align*}
-1+c_{0}+d_{0} & =a_{1}+b_{1}+c_{1}+d_{1}\\
-2c_{0}+3d_{0} & =b_{1}+2c_{1}+3d_{1}\\
-2c_{0}+6d_{0} & =2c_{1}+6d_{1}
+b_{1}+c_{1}+d_{1} & =0\\
+b_{1}+2c_{1}+3d_{1} & =0\\
+b_{1}+c_{0} & =0
 \end{align*}
 
 \end_inset
@@ -156,10 +207,11 @@ a_{1}+b_{1}x+c_{1}x^{2}+d_{1}x^{3} & x\in[1,2)\\
 \end_layout
 
 \begin_layout Standard
-and
+So
 \begin_inset Formula 
 \begin{align*}
-a_{1}+2b_{1}+4c_{1}+8d_{1} & =0
+b_{1} & =-c_{0}\\
+d_{1} & =-\left(c_{1}-c_{0}\right)\\
 \end{align*}
 
 \end_inset
@@ -168,7 +220,63 @@ a_{1}+2b_{1}+4c_{1}+8d_{1} & =0
 \end_layout
 
 \begin_layout Standard
-B splines always sum to one:
+And
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right) & =\begin{cases}
+1+c_{0}x^{2}-\left(1+c_{0}\right)x^{3} & x\in[0,1)\\
+-c_{0}\left(x-1\right)+c_{1}\left(x-1\right)^{2}-\left(c_{1}-c_{0}\right)\left(x-1\right)^{3} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Then
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+-c_{0}+2c_{1}-3\left(c_{1}-c_{0}\right) & =0\\
+-c_{0}+2c_{1}-3c_{1}+3c_{0} & =0\\
+2c_{0}-c_{1} & =0\\
+c_{1} & =2c_{0}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+so
+\end_layout
+
+\begin_layout Standard
+\begin_inset Formula 
+\begin{align*}
+f\left(x\right) & =\begin{cases}
+1+c_{0}x^{2}-\left(1+c_{0}\right)x^{3} & x\in[0,1)\\
+-c_{0}\left(x-1\right)+2c_{0}\left(x-1\right)^{2}-c_{0}\left(x-1\right)^{3} & x\in[1,2)\\
+0 & o/w
+\end{cases}
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Here's a proof that B splines always sum to one:
 \end_layout
 
 \begin_layout Standard
@@ -543,6 +651,41 @@ f'\left(2\right) & =a+\frac{1}{2}b+a+b=2a+\frac{3}{2}b+\frac{1}{2}c
 \end_inset
 
 
+\end_layout
+
+\begin_layout Section
+Next
+\end_layout
+
+\begin_layout Standard
+Dig that
+\begin_inset Formula 
+\begin{align*}
+\frac{d}{dx}\left(f\left(x\right)+f\left(1-x\right)+f\left(1+x\right)+f\left(2-x\right)\right) & =f'\left(x\right)-f'\left(1-x\right)+f'\left(1+x\right)-f'\left(2-x\right)\\
+ & =f'\left(0\right)+\int_{0}^{x}f''\left(s\right)ds-\\
+ & \quad\left(f'\left(1\right)+\int_{0}^{x}f''\left(1-s\right)ds\right)+\\
+ & \quad f'\left(1\right)+\int_{0}^{x}f''\left(1+s\right)ds-\\
+ & \quad\left(f'\left(2\right)+\int_{0}^{x}f''\left(2-s\right)ds\right)\\
+ & =\int_{0}^{x}\left(f''\left(s\right)ds-f''\left(1-s\right)ds+f''\left(1+s\right)ds-f''\left(2-s\right)\right)ds
+\end{align*}
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Standard
+Nope.
+\end_layout
+
+\begin_layout Standard
+Actually, look at eq 7 of Cubic Convolution Interpolation for Digital Image
+ Processing, which proves this since summing is equivalent to interpolating
+ the constant function 
+\begin_inset Formula $f\left(x\right)=1$
+\end_inset
+
+.
 \end_layout
 
 \end_body
